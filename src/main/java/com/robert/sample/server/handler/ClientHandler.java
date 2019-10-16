@@ -1,5 +1,6 @@
 package com.robert.sample.server.handler;
 
+import com.robert.sample.Client;
 import com.robert.util.CloseUtils;
 import com.robert.util.PrintUtil;
 
@@ -8,24 +9,30 @@ import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class ClientHandler extends Thread {
+public class ClientHandler {
 
     private final ReadHandler readHandler;
     private final WriteHandler writeHandler;
-    private final CloseNotify closeNofity;
+    private final ClientHandlerCallback clientHandlerCallback;
     private final Socket socket;
+    private final String clientInfo;
 
     /**
-     * @param socket      客户端连接的socket
-     * @param closeNotify 当前客户端退出的回调
+     * @param socket                客户端连接的socket
+     * @param clientHandlerCallback 当前客户端的回调
      * @throws IOException 操作异常
      */
-    public ClientHandler(Socket socket, CloseNotify closeNotify) throws IOException {
+    public ClientHandler(Socket socket, ClientHandlerCallback clientHandlerCallback) throws IOException {
         this.socket = socket;
         this.readHandler = new ReadHandler(socket.getInputStream());
         this.writeHandler = new WriteHandler(socket.getOutputStream());
-        this.closeNofity = closeNotify;
+        this.clientHandlerCallback = clientHandlerCallback;
+        this.clientInfo = "A [" + socket.getInetAddress().getHostName() + "], P[" + socket.getPort() + "]";
         PrintUtil.println("新客户端连接：" + socket.getInetAddress() + " P:" + socket.getPort());
+    }
+
+    public String getClientInfo() {
+        return clientInfo;
     }
 
     /**
@@ -48,12 +55,14 @@ public class ClientHandler extends Thread {
      * 异常退出
      */
     private void exitBySelf() {
-        closeNofity.onSelfClosed(this);
         exit();
+        clientHandlerCallback.onSelfClosed(this);
     }
 
-    public interface CloseNotify {
+    public interface ClientHandlerCallback {
         void onSelfClosed(ClientHandler handler);
+
+        void onMessageArrived(ClientHandler handler, String msg);
     }
 
     /**
@@ -85,8 +94,9 @@ public class ClientHandler extends Thread {
                     if (message == null) {
                         PrintUtil.println("客户端已无法获取数据");
                         ClientHandler.this.exitBySelf();
+                        break;
                     }
-                    PrintUtil.println("接受到客户端消息： " + message);
+                    clientHandlerCallback.onMessageArrived(ClientHandler.this, message);
                 } while (!done);
             } catch (IOException e) {
                 if (!done) {
@@ -121,7 +131,9 @@ public class ClientHandler extends Thread {
          * @param message
          */
         void send(String message) {
-            executorService.execute(new WriteRunnable(message));
+            if (!done) {
+                executorService.execute(new WriteRunnable(message));
+            }
         }
 
         /**

@@ -124,7 +124,7 @@ public class UDPSearcher {
                     int serverPort = buffer.getInt();
                     //5. 判断数据是否正确
                     if (cmd != UDPConstants.CMD_SEARCH_SERVER_RESP || serverPort <= 0) {
-                        System.out.println("UDPSearcher receive cmd:" + cmd + "\tserverPort:" + serverPort);
+                        PrintUtil.println("UDPSearcher receive cmd:" + cmd + "\tserverPort:" + serverPort);
                         continue;
                     }
                     String sn = new String(receiveData, minLength, packet.getLength() - minLength);

@@ -13,43 +13,46 @@ import java.net.SocketTimeoutException;
 public class TcpClient {
 
 
-    public static void startConnect(ServerInfo serverInfo) {
-        ReadHandler readHandler = null;
-        Socket socket = null;
+    private final ReadHandler readHandler;
+    private final Socket socket;
+    private final PrintStream printStream;
+
+    public TcpClient(Socket socket, ReadHandler readHandler) throws IOException {
+        this.socket = socket;
+        this.readHandler = readHandler;
+        this.printStream = new PrintStream(socket.getOutputStream());
+
+    }
+
+    public void exit() {
+        readHandler.exit();
+        CloseUtils.close(printStream);
+        CloseUtils.close(socket);
+    }
+
+    public void send(String msg) {
+        printStream.println(msg);
+    }
+
+    public static TcpClient startConnect(ServerInfo serverInfo) {
         try {
+            Socket socket;
+            ReadHandler readHandler;
             socket = new Socket();
-//            socket.setSoTimeout(3000);
             socket.connect(new InetSocketAddress(serverInfo.getAddress(), serverInfo.getPort()));
             PrintUtil.println("已发起服务器连接，并进入后续程序");
             PrintUtil.println("客户端信息： " + socket.getLocalAddress() + ", p: " + socket.getLocalPort());
             PrintUtil.println("服务端信息：" + socket.getInetAddress() + "， P:" + socket.getPort());
             readHandler = new ReadHandler(socket.getInputStream());
             readHandler.start();
-            write(socket);
+            return new TcpClient(socket, readHandler);
         } catch (IOException e) {
             e.printStackTrace();
             PrintUtil.println("客户端异常退出。。。");
-        } finally {
-            if (readHandler != null) {
-                readHandler.exit();
-            }
-            CloseUtils.close(socket);
-            PrintUtil.println("客户端退出");
         }
+        return null;
     }
 
-    private static void write(Socket socket) throws IOException {
-
-        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-        String result = "";
-        PrintStream printStream = new PrintStream(socket.getOutputStream());
-        do {
-            result = reader.readLine();
-            printStream.println(result);
-        } while (!"00bye00".equalsIgnoreCase(result));
-        CloseUtils.close(printStream);
-        CloseUtils.close(reader);
-    }
 
     private final static class ReadHandler extends Thread {
 
