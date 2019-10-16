@@ -1,2 +1,5 @@
 rootProject.name = 'learnsocket'
+include 'sample-server'
+include 'common'
+include 'sample-client'
 
