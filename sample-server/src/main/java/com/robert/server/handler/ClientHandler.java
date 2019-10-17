@@ -5,6 +5,13 @@ import com.robert.util.PrintUtil;
 
 import java.io.*;
 import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectableChannel;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
+import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -13,7 +20,7 @@ public class ClientHandler {
     private final ReadHandler readHandler;
     private final WriteHandler writeHandler;
     private final ClientHandlerCallback clientHandlerCallback;
-    private final Socket socket;
+    private final SocketChannel socket;
     private final String clientInfo;
 
     /**
@@ -21,13 +28,20 @@ public class ClientHandler {
      * @param clientHandlerCallback 当前客户端的回调
      * @throws IOException 操作异常
      */
-    public ClientHandler(Socket socket, ClientHandlerCallback clientHandlerCallback) throws IOException {
+    public ClientHandler(SocketChannel socket, ClientHandlerCallback clientHandlerCallback) throws IOException {
         this.socket = socket;
-        this.readHandler = new ReadHandler(socket.getInputStream());
-        this.writeHandler = new WriteHandler(socket.getOutputStream());
+        socket.configureBlocking(false);
+        Selector readSelector = Selector.open();
+        socket.register(readSelector, SelectionKey.OP_READ);
+        this.readHandler = new ReadHandler(readSelector);
+
+        Selector writeSelector = Selector.open();
+        socket.register(writeSelector, SelectionKey.OP_WRITE);
+        this.writeHandler = new WriteHandler(writeSelector);
+
         this.clientHandlerCallback = clientHandlerCallback;
-        this.clientInfo = "A [" + socket.getInetAddress().getHostName() + "], P[" + socket.getPort() + "]";
-        PrintUtil.println("新客户端连接：" + socket.getInetAddress() + " P:" + socket.getPort());
+        this.clientInfo = socket.getRemoteAddress().toString();
+        PrintUtil.println("新客户端连接：" + clientInfo);
     }
 
     public String getClientInfo() {
@@ -71,31 +85,56 @@ public class ClientHandler {
         readHandler.exit();
         writeHandler.exit();
         CloseUtils.close(socket);
-        PrintUtil.println("客户端已退出：" + socket.getInetAddress() + " P:" + socket.getPort());
+        PrintUtil.println("客户端已退出：" + clientInfo);
     }
 
     private class ReadHandler extends Thread {
 
-        private final InputStream inputStream;
+        private final Selector selector;
+        private final ByteBuffer byteBuffer;
         private boolean done = false;
 
-        ReadHandler(InputStream inputStream) {
-            this.inputStream = inputStream;
+
+        ReadHandler(Selector selector) {
+            this.selector = selector;
+            this.byteBuffer = ByteBuffer.allocate(256);
         }
 
         @Override
         public void run() {
             try {
-                BufferedReader is = new BufferedReader(new InputStreamReader(inputStream));
+                ByteBuffer byteBuffer = this.byteBuffer;
                 do {
-                    //读取客户端发送的消息
-                    String message = is.readLine();
-                    if (message == null) {
-                        PrintUtil.println("客户端已无法获取数据");
-                        ClientHandler.this.exitBySelf();
-                        break;
+                    if (selector.select() == 0) {
+                        if (done) {
+                            break;
+                        }
+                        continue;
                     }
-                    clientHandlerCallback.onMessageArrived(ClientHandler.this, message);
+                    Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
+                    while (iterator.hasNext()) {
+                        if (done) {
+                            break;
+                        }
+                        SelectionKey key = iterator.next();
+                        iterator.remove();
+                        if (key.isReadable()) {
+                            SocketChannel channel = (SocketChannel) key.channel();
+                            //清空byteBuffer
+                            byteBuffer.clear();
+                            //读取数据
+                            int read = channel.read(byteBuffer);
+                            if (read > 0) {
+                                //丢弃掉换行符
+                                String msg = new String(byteBuffer.array(), 0, read - 1);
+                                clientHandlerCallback.onMessageArrived(ClientHandler.this, msg);
+                            } else {
+                                PrintUtil.println("客户端已无法获取数据");
+                                ClientHandler.this.exitBySelf();
+                                break;
+                            }
+                        }
+                    }
                 } while (!done);
             } catch (IOException e) {
                 if (!done) {
@@ -103,25 +142,28 @@ public class ClientHandler {
                     ClientHandler.this.exitBySelf();
                 }
             } finally {
-                CloseUtils.close(inputStream);
+                CloseUtils.close(selector);
             }
         }
 
         void exit() {
             done = true;
-            CloseUtils.close(inputStream);
+            selector.wakeup();
+            CloseUtils.close(selector);
         }
     }
 
 
     private class WriteHandler {
-        private final PrintStream printStream;
+        private final Selector selector;
         private final ExecutorService executorService;
+        private final ByteBuffer byteBuffer;
         private boolean done = false;
 
-        WriteHandler(OutputStream outputStream) {
-            printStream = new PrintStream(outputStream);
+        WriteHandler(Selector selector) {
+            this.selector = selector;
             executorService = Executors.newSingleThreadExecutor();
+            this.byteBuffer = ByteBuffer.allocate(256);
         }
 
         /**
@@ -140,7 +182,7 @@ public class ClientHandler {
          */
         void exit() {
             this.done = true;
-            CloseUtils.close(printStream);
+            CloseUtils.close(selector);
             executorService.shutdown();
         }
 
@@ -160,8 +202,19 @@ public class ClientHandler {
                 if (WriteHandler.this.done) {
                     return;
                 }
+                byteBuffer.clear();
+                byteBuffer.put((message + "\n").getBytes(StandardCharsets.UTF_8));
+                byteBuffer.flip();
+
                 try {
-                    WriteHandler.this.printStream.println(message);
+                    while (!done && byteBuffer.hasRemaining()) {
+                        int len = socket.write(byteBuffer);
+                        if (len < 0) {
+                            PrintUtil.println("客户端已无法发送数据！");
+                            exitBySelf();
+                            break;
+                        }
+                    }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
