@@ -11,5 +11,5 @@ public interface Receiver {
      * @return
      * @throws IOException
      */
-    boolean receiverAsync(IoArgs.IoArgsListener listener) throws IOException;
+    boolean receiverAsync(IoArgs.IoArgsEventListener listener) throws IOException;
 }

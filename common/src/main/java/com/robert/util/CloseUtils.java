@@ -8,11 +8,11 @@ public class CloseUtils {
     /**
      * 关闭可关闭的流对象
      *
-     * @param closeables
+     * @param closable
      */
-    public static void close(Closeable... closeables) {
-        if (closeables != null) {
-            for (Closeable closeable : closeables) {
+    public static void close(Closeable... closable) {
+        if (closable != null) {
+            for (Closeable closeable : closable) {
                 try {
                     closeable.close();
                 } catch (IOException e) {

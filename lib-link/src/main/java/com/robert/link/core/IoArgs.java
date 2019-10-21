@@ -26,7 +26,7 @@ public class IoArgs {
         return new String(buffer, 0, buffer.length - 1);
     }
 
-    public interface IoArgsListener {
+    public interface IoArgsEventListener {
         void onStart(IoArgs args);
 
         void onComplete(IoArgs args);

@@ -11,5 +11,5 @@ public interface Sender {
      * @return 是否发送成功
      * @throws IOException IO操作异常
      */
-    boolean sendAsync(IoArgs args, IoArgs.IoArgsListener listener) throws IOException;
+    boolean sendAsync(IoArgs args, IoArgs.IoArgsEventListener listener) throws IOException;
 }

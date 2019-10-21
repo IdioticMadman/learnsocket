@@ -1,7 +1,6 @@
 package com.robert.link.core;
 
 import java.io.Closeable;
-import java.net.Socket;
 import java.nio.channels.SocketChannel;
 
 /**
@@ -9,9 +8,9 @@ import java.nio.channels.SocketChannel;
  */
 public interface IoProvider extends Closeable {
 
-    void registerInput(SocketChannel channel, HandlerInputCallback inputCallback);
+    boolean registerInput(SocketChannel channel, HandlerInputCallback inputCallback);
 
-    void registerOutput(SocketChannel channel, HandlerOutputCallback outputCallback);
+    boolean registerOutput(SocketChannel channel, HandlerOutputCallback outputCallback);
 
     void unRegisterInput(SocketChannel channel);
 
@@ -24,7 +23,7 @@ public interface IoProvider extends Closeable {
             canProviderInput();
         }
 
-        abstract void canProviderInput();
+        public abstract void canProviderInput();
     }
 
     abstract class HandlerOutputCallback implements Runnable {
@@ -39,7 +38,7 @@ public interface IoProvider extends Closeable {
             canProviderOutput(attach);
         }
 
-        abstract void canProviderOutput(Object attach);
+        public abstract void canProviderOutput(Object attach);
     }
 
 }
