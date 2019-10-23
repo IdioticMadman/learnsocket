@@ -1,5 +1,6 @@
 package com.robert.server.handler;
 
+import com.robert.link.core.Connector;
 import com.robert.util.CloseUtils;
 import com.robert.util.PrintUtil;
 
@@ -17,11 +18,11 @@ import java.util.concurrent.Executors;
 
 public class ClientHandler {
 
-    private final ReadHandler readHandler;
     private final WriteHandler writeHandler;
     private final ClientHandlerCallback clientHandlerCallback;
     private final SocketChannel socket;
     private final String clientInfo;
+    private final Connector connector;
 
     /**
      * @param socket                客户端连接的socket
@@ -31,9 +32,21 @@ public class ClientHandler {
     public ClientHandler(SocketChannel socket, ClientHandlerCallback clientHandlerCallback) throws IOException {
         this.socket = socket;
         socket.configureBlocking(false);
-        Selector readSelector = Selector.open();
-        socket.register(readSelector, SelectionKey.OP_READ);
-        this.readHandler = new ReadHandler(readSelector);
+        Connector connector = new Connector() {
+            @Override
+            public void onChannelClose(SocketChannel channel) {
+                super.onChannelClose(channel);
+                ClientHandler.this.exitBySelf();
+            }
+
+            @Override
+            public void onReceiverNewMessage(String msg) {
+                super.onReceiverNewMessage(msg);
+                ClientHandler.this.clientHandlerCallback.onMessageArrived(ClientHandler.this, msg);
+            }
+        };
+        connector.setUp(socket);
+        this.connector = connector;
 
         Selector writeSelector = Selector.open();
         socket.register(writeSelector, SelectionKey.OP_WRITE);
@@ -48,12 +61,6 @@ public class ClientHandler {
         return clientInfo;
     }
 
-    /**
-     * 开启接收客户端消息
-     */
-    public void readToPrint() {
-        readHandler.start();
-    }
 
     /**
      * 发送消息
@@ -82,75 +89,9 @@ public class ClientHandler {
      * 退出，释放资源
      */
     public void exit() {
-        readHandler.exit();
         writeHandler.exit();
-        CloseUtils.close(socket);
+        CloseUtils.close(socket, connector);
         PrintUtil.println("客户端已退出：" + clientInfo);
-    }
-
-    private class ReadHandler extends Thread {
-
-        private final Selector selector;
-        private final ByteBuffer byteBuffer;
-        private boolean done = false;
-
-
-        ReadHandler(Selector selector) {
-            this.selector = selector;
-            this.byteBuffer = ByteBuffer.allocate(256);
-        }
-
-        @Override
-        public void run() {
-            try {
-                ByteBuffer byteBuffer = this.byteBuffer;
-                do {
-                    if (selector.select() == 0) {
-                        if (done) {
-                            break;
-                        }
-                        continue;
-                    }
-                    Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
-                    while (iterator.hasNext()) {
-                        if (done) {
-                            break;
-                        }
-                        SelectionKey key = iterator.next();
-                        iterator.remove();
-                        if (key.isReadable()) {
-                            SocketChannel channel = (SocketChannel) key.channel();
-                            //清空byteBuffer
-                            byteBuffer.clear();
-                            //读取数据
-                            int read = channel.read(byteBuffer);
-                            if (read > 0) {
-                                //丢弃掉换行符
-                                String msg = new String(byteBuffer.array(), 0, read - 1);
-                                clientHandlerCallback.onMessageArrived(ClientHandler.this, msg);
-                            } else {
-                                PrintUtil.println("客户端已无法获取数据");
-                                ClientHandler.this.exitBySelf();
-                                break;
-                            }
-                        }
-                    }
-                } while (!done);
-            } catch (IOException e) {
-                if (!done) {
-                    PrintUtil.println("链接异常断开");
-                    ClientHandler.this.exitBySelf();
-                }
-            } finally {
-                CloseUtils.close(selector);
-            }
-        }
-
-        void exit() {
-            done = true;
-            selector.wakeup();
-            CloseUtils.close(selector);
-        }
     }
 
 

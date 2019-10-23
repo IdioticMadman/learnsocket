@@ -1,9 +1,12 @@
 package com.robert.link.impl;
 
 import com.robert.link.core.IoProvider;
+import com.robert.util.CloseUtils;
 import com.sun.istack.internal.Nullable;
+import com.sun.org.apache.bcel.internal.generic.Select;
 
 import java.io.IOException;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
@@ -41,6 +44,7 @@ public class IoSelectorProvider implements IoProvider {
         this.outputHandlePool = Executors.newFixedThreadPool(5,
                 new IoProviderThreadFactory("IoProvider-output-thread"));
 
+        //开启轮询读写就绪的channel
         startRead();
         startWrite();
     }
@@ -52,16 +56,17 @@ public class IoSelectorProvider implements IoProvider {
                 while (!isClose.get()) {
                     try {
                         if (readSelector.select() == 0) {
+                            waitSelection(inRegInput);
                             continue;
                         }
                         Set<SelectionKey> selectionKeys = readSelector.selectedKeys();
                         for (SelectionKey selectionKey : selectionKeys) {
                             if (selectionKey.isValid()) {
+                                //异步处理读取数据，不阻塞当前轮询器
                                 handleSelection(selectionKey, SelectionKey.OP_READ, inputCallbackMap, inputHandlePool);
                             }
                         }
                         selectionKeys.clear();
-
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
@@ -78,7 +83,23 @@ public class IoSelectorProvider implements IoProvider {
             @Override
             public void run() {
                 while (!isClose.get()) {
+                    try {
+                        if (writeSelector.select() == 0) {
+                            waitSelection(inRegOutput);
+                            continue;
+                        }
+                        Set<SelectionKey> selectionKeys = writeSelector.selectedKeys();
+                        for (SelectionKey selectionKey : selectionKeys) {
+                            if (selectionKey.isValid()) {
+                                //异步处理写入数据，不阻塞当前轮询器
+                                handleSelection(selectionKey, SelectionKey.OP_WRITE, outputCallbackMap, outputHandlePool);
+                            }
+                        }
+                        selectionKeys.clear();
 
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 }
             }
         };
@@ -101,6 +122,34 @@ public class IoSelectorProvider implements IoProvider {
     }
 
 
+    @Override
+    public void unRegisterInput(SocketChannel channel) {
+        unRegisterSelection(channel, readSelector, inputCallbackMap);
+    }
+
+    @Override
+    public void unRegisterOutput(SocketChannel channel) {
+        unRegisterSelection(channel, writeSelector, outputCallbackMap);
+    }
+
+    @Override
+    public void close() {
+        if (isClose.compareAndSet(false, true)) {
+            //关闭线程池
+            inputHandlePool.shutdown();
+            outputHandlePool.shutdown();
+            //清空回调
+            inputCallbackMap.clear();
+            outputCallbackMap.clear();
+            //唤醒selector
+            writeSelector.wakeup();
+            readSelector.wakeup();
+            //关闭selector
+            CloseUtils.close(writeSelector, readSelector);
+        }
+    }
+
+
     private static void handleSelection(SelectionKey key, int keyOps,
                                         Map<SelectionKey, Runnable> callbackMap,
                                         ExecutorService handlePool) {
@@ -113,16 +162,57 @@ public class IoSelectorProvider implements IoProvider {
         }
     }
 
+
+    /**
+     * 根据locker判断当前是否处于注册阶段，
+     * 由于注册阶段会有一次唤醒操作，不会阻塞在select()状态
+     *
+     * @param locker 注册读或者注册写的
+     */
+    private static void waitSelection(final AtomicBoolean locker) {
+        //noinspection SynchronizationOnLocalVariableOrMethodParameter
+        synchronized (locker) {
+            if (locker.get()) {
+                try {
+                    locker.wait();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+    }
+
     private static SelectionKey registerSelection(SocketChannel channel, Selector selector,
-                                                  int keyOps, AtomicBoolean locker,
+                                                  int registerOps, AtomicBoolean locker,
                                                   Map<SelectionKey, Runnable> outputCallbackMap,
                                                   Runnable callback) {
+        //noinspection SynchronizationOnLocalVariableOrMethodParameter
         synchronized (locker) {
+            //设置进入注册阶段
             locker.set(true);
             try {
                 selector.wakeup();
+                SelectionKey key = null;
+                if (channel.isRegistered()) {
+                    //查询是否已经注册过
+                    key = channel.keyFor(selector);
+                    if (key != null) {
+                        key.interestOps(key.readyOps() | registerOps);
+                    }
+                }
 
-
+                if (key == null) {
+                    try {
+                        //注册selector得到key
+                        key = channel.register(selector, registerOps);
+                        //根据key
+                        outputCallbackMap.put(key, callback);
+                    } catch (ClosedChannelException ignore) {
+                        return null;
+                    }
+                }
+                return key;
             } finally {
                 locker.set(false);
                 try {
@@ -131,22 +221,21 @@ public class IoSelectorProvider implements IoProvider {
                 }
             }
         }
-        return null;
     }
 
-    @Override
-    public void unRegisterInput(SocketChannel channel) {
-
-    }
-
-    @Override
-    public void unRegisterOutput(SocketChannel channel) {
-
-    }
-
-    @Override
-    public void close() throws IOException {
-
+    private static void unRegisterSelection(SocketChannel channel, Selector selector,
+                                            Map<SelectionKey, Runnable> callbackMap) {
+        if (channel.isRegistered()) {
+            SelectionKey key = channel.keyFor(selector);
+            if (key != null) {
+                //取消监听时间
+                key.cancel();
+                //移除回调
+                callbackMap.remove(key);
+                //唤醒退出循环
+                selector.wakeup();
+            }
+        }
     }
 
     /**

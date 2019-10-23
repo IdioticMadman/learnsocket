@@ -112,7 +112,6 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback {
     @Override
     public void onMessageArrived(final ClientHandler handler, String msg) {
         // 打印到屏幕
-        PrintUtil.println("Received-" + handler.getClientInfo() + ":" + msg);
         forwardingThreadPoolExecutor.execute(() -> {
             synchronized (TcpServer.this) {
                 for (ClientHandler clientHandler : clientHandlers) {
@@ -156,7 +155,6 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback {
                             SocketChannel socket = serverSocket.accept();
 
                             ClientHandler clientHandler = new ClientHandler(socket, TcpServer.this);
-                            clientHandler.readToPrint();
                             synchronized (TcpServer.this) {
                                 clientHandlers.add(clientHandler);
                             }

@@ -100,11 +100,11 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
             ioProvider.unRegisterOutput(channel);
 
             CloseUtils.close(channel);
-            statusChangedListener.onClose(channel);
+            statusChangedListener.onChannelClose(channel);
         }
     }
 
     public interface onChannelStatusChangedListener {
-        void onClose(SocketChannel channel);
+        void onChannelClose(SocketChannel channel);
     }
 }

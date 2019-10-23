@@ -23,7 +23,7 @@ public class IoArgs {
 
     public String bufferString() {
         //丢弃换行符
-        return new String(buffer, 0, buffer.length - 1);
+        return new String(buffer, 0, byteBuffer.position() - 1);
     }
 
     public interface IoArgsEventListener {
