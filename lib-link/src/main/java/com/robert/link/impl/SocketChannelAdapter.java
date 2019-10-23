@@ -41,10 +41,10 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
                 receiverEventListener.onStart(ioArgs);
             }
             try {
-                if (ioArgs.read(channel) > 0 && receiverEventListener != null) {
+                if (ioArgs.readFrom(channel) > 0 && receiverEventListener != null) {
                     receiverEventListener.onComplete(ioArgs);
                 } else {
-                    throw new IOException("Cannot read any data!!!");
+                    throw new IOException("Cannot readFrom any data!!!");
                 }
             } catch (IOException ignore) {
                 CloseUtils.close(SocketChannelAdapter.this);

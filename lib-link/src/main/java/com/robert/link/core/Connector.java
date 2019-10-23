@@ -1,5 +1,7 @@
 package com.robert.link.core;
 
+import com.robert.link.box.StringReceiverPacket;
+import com.robert.link.box.StringSendPacket;
 import com.robert.link.impl.SocketChannelAdapter;
 import com.robert.util.PrintUtil;
 
@@ -17,6 +19,8 @@ public class Connector implements Closeable, SocketChannelAdapter.onChannelStatu
     private SocketChannel channel;
     private Sender sender;
     private Receiver receiver;
+    private SenderDispatcher senderDispatcher;
+    private ReceiverDispatcher receiverDispatcher;
 
     public void setUp(SocketChannel socketChannel) throws IOException {
         this.channel = socketChannel;
@@ -26,35 +30,25 @@ public class Connector implements Closeable, SocketChannelAdapter.onChannelStatu
         this.sender = adapter;
         this.receiver = adapter;
 
-        readNextMessage();
     }
 
-    private void readNextMessage() {
-        if (receiver != null) {
-            try {
-                receiver.receiverAsync(receiverListener);
-            } catch (IOException e) {
-                PrintUtil.println("开始接受数据异常");
-            }
-        }
+    public void send(String msg) {
+        Packet packet = new StringSendPacket(msg);
+        senderDispatcher.send(packet);
+
     }
 
-    private IoArgs.IoArgsEventListener receiverListener = new IoArgs.IoArgsEventListener() {
-        @Override
-        public void onStart(IoArgs args) {
-
-        }
-
-        @Override
-        public void onComplete(IoArgs args) {
-            onReceiverNewMessage(args.bufferString());
-            readNextMessage();
-        }
-    };
 
     public void onReceiverNewMessage(String msg) {
         PrintUtil.println(key + ": " + msg);
     }
+
+    ReceiverDispatcher.ReceiverPacketCallback receiverPacketCallback = packet -> {
+        if (packet instanceof StringReceiverPacket) {
+            String msg = ((StringReceiverPacket) packet).string();
+            onReceiverNewMessage(msg);
+        }
+    };
 
     @Override
     public void close() throws IOException {

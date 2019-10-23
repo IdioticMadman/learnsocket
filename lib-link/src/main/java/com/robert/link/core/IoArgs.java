@@ -12,18 +12,37 @@ public class IoArgs {
     private byte[] buffer = new byte[256];
     private ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
 
-    public int read(SocketChannel channel) throws IOException {
+    public int readFrom(byte[] bytes, int offset) {
+        int len = Math.min(bytes.length - offset, byteBuffer.remaining());
+        byteBuffer.get(bytes, offset, len);
+        return len;
+    }
+
+    public int writeTo(byte[] bytes, int offset) {
+        int len = Math.min(bytes.length - offset, byteBuffer.remaining());
+        byteBuffer.put(bytes, offset, len);
+        return len;
+    }
+
+    public int readFrom(SocketChannel channel) throws IOException {
+        startWriting();
+
+
+        finishWriting();
         byteBuffer.clear();
         return channel.read(byteBuffer);
     }
 
-    public int write(SocketChannel channel) throws IOException {
+    public int writeTo(SocketChannel channel) throws IOException {
         return channel.write(byteBuffer);
     }
 
-    public String bufferString() {
-        //丢弃换行符
-        return new String(buffer, 0, byteBuffer.position() - 1);
+    private void startWriting() {
+        byteBuffer.clear();
+    }
+
+    private void finishWriting() {
+        byteBuffer.flip();
     }
 
     public interface IoArgsEventListener {
