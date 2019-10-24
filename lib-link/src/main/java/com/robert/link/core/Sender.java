@@ -1,8 +1,9 @@
 package com.robert.link.core;
 
+import java.io.Closeable;
 import java.io.IOException;
 
-public interface Sender {
+public interface Sender extends Closeable {
     /**
      * 异步发送数据
      *

@@ -1,9 +1,11 @@
 package com.robert.link.core;
 
+import java.io.Closeable;
+
 /**
  * 接收数据的调度
  */
-public interface ReceiverDispatcher {
+public interface ReceiverDispatcher extends Closeable {
 
     /**
      * 开始接收

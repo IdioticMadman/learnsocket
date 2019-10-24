@@ -3,6 +3,8 @@ package com.robert.link.core;
 import com.robert.link.box.StringReceiverPacket;
 import com.robert.link.box.StringSendPacket;
 import com.robert.link.impl.SocketChannelAdapter;
+import com.robert.link.impl.async.AsyncReceiverDispatcher;
+import com.robert.link.impl.async.AsyncSenderDispatcher;
 import com.robert.util.PrintUtil;
 
 import java.io.Closeable;
@@ -17,25 +19,39 @@ public class Connector implements Closeable, SocketChannelAdapter.onChannelStatu
 
     private String key = UUID.randomUUID().toString();
     private SocketChannel channel;
-    private Sender sender;
-    private Receiver receiver;
     private SenderDispatcher senderDispatcher;
     private ReceiverDispatcher receiverDispatcher;
+
+    private Sender sender;
+    private Receiver receiver;
+
+    //包体接收回调
+    private ReceiverDispatcher.ReceiverPacketCallback receiverPacketCallback = packet -> {
+        if (packet instanceof StringReceiverPacket) {
+            String msg = ((StringReceiverPacket) packet).string();
+            onReceiverNewMessage(msg);
+        }
+    };
 
     public void setUp(SocketChannel socketChannel) throws IOException {
         this.channel = socketChannel;
 
         IoContext context = IoContext.get();
         SocketChannelAdapter adapter = new SocketChannelAdapter(channel, context.getIoProvider(), this);
+
+        //分发器
         this.sender = adapter;
         this.receiver = adapter;
-
+        //发送数据分发器
+        this.senderDispatcher = new AsyncSenderDispatcher(this.sender);
+        //接收数据分发器
+        this.receiverDispatcher = new AsyncReceiverDispatcher(this.receiver, receiverPacketCallback);
+        receiverDispatcher.start();
     }
 
     public void send(String msg) {
-        Packet packet = new StringSendPacket(msg);
+        SendPacket packet = new StringSendPacket(msg);
         senderDispatcher.send(packet);
-
     }
 
 
@@ -43,16 +59,13 @@ public class Connector implements Closeable, SocketChannelAdapter.onChannelStatu
         PrintUtil.println(key + ": " + msg);
     }
 
-    ReceiverDispatcher.ReceiverPacketCallback receiverPacketCallback = packet -> {
-        if (packet instanceof StringReceiverPacket) {
-            String msg = ((StringReceiverPacket) packet).string();
-            onReceiverNewMessage(msg);
-        }
-    };
 
     @Override
     public void close() throws IOException {
-
+        this.receiverDispatcher.close();
+        this.senderDispatcher.close();
+        this.receiver.close();
+        this.sender.close();
     }
 
     @Override

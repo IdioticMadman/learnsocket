@@ -2,6 +2,8 @@ package com.robert.link.box;
 
 import com.robert.link.core.ReceiverPacket;
 
+import java.io.IOException;
+
 public class StringReceiverPacket extends ReceiverPacket {
     private final byte[] bytes;
     private int position;
@@ -19,5 +21,10 @@ public class StringReceiverPacket extends ReceiverPacket {
 
     public String string() {
         return new String(bytes, 0, position);
+    }
+
+    @Override
+    public void close() throws IOException {
+
     }
 }
