@@ -17,14 +17,9 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
     private final IoProvider ioProvider;
     private final onChannelStatusChangedListener statusChangedListener;
 
-    private IoArgs.IoArgsEventListener receiverEventListener;
-    private IoArgs.IoArgsEventListener sendEventListener;
+    private IoArgs.IoArgsEventProcessor receiveEventProcessor;
+    private IoArgs.IoArgsEventProcessor sendEventProcessor;
 
-    private IoArgs tempReceiverIoArgs;
-
-    public void setReceiverEventListener(IoArgs.IoArgsEventListener receiverEventListener) {
-        this.receiverEventListener = receiverEventListener;
-    }
 
     //当可以接收数据回调
     private IoProvider.HandlerInputCallback inputCallback = new IoProvider.HandlerInputCallback() {
@@ -34,14 +29,13 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
             if (isClose.get()) {
                 return;
             }
-            IoArgs ioArgs = tempReceiverIoArgs;
-            IoArgs.IoArgsEventListener receiverEventListener = SocketChannelAdapter.this.receiverEventListener;
-            receiverEventListener.onStart(ioArgs);
+            IoArgs.IoArgsEventProcessor receiveEventProcessor = SocketChannelAdapter.this.receiveEventProcessor;
+            IoArgs ioArgs = receiveEventProcessor.provideIoArgs();
             try {
                 if (ioArgs.readFrom(channel) > 0) {
-                    receiverEventListener.onComplete(ioArgs);
+                    receiveEventProcessor.onConsumeComplete(ioArgs);
                 } else {
-                    throw new IOException("Cannot readFrom any data!!!");
+                    receiveEventProcessor.onConsumeFailed(ioArgs, new IOException("Cannot readFrom any data!!!"));
                 }
             } catch (IOException ignore) {
                 CloseUtils.close(SocketChannelAdapter.this);
@@ -56,21 +50,19 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
             if (isClose.get()) {
                 return;
             }
+            IoArgs.IoArgsEventProcessor processor = SocketChannelAdapter.this.sendEventProcessor;
+
             //获取待发送的数据
-            IoArgs ioArgs = getAttach();
-            IoArgs.IoArgsEventListener listener = SocketChannelAdapter.this.sendEventListener;
-            //开始发送数据
-            listener.onStart(ioArgs);
+            IoArgs ioArgs = processor.provideIoArgs();
             try {
                 if (ioArgs.writeTo(channel) > 0) {
-                    listener.onComplete(ioArgs);
+                    processor.onConsumeComplete(ioArgs);
                 } else {
-                    throw new IOException("Cannot write any data!!");
+                    processor.onConsumeFailed(ioArgs, new IOException("Cannot write any data!!"));
                 }
             } catch (IOException e) {
                 CloseUtils.close(SocketChannelAdapter.this);
             }
-
         }
     };
 
@@ -82,26 +74,32 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
         channel.configureBlocking(false);
     }
 
+    @Override
+    public void setReceiveEventProcessor(IoArgs.IoArgsEventProcessor receiveEventProcessor) {
+        this.receiveEventProcessor = receiveEventProcessor;
+    }
 
     @Override
-    public boolean receiverAsync(IoArgs args) throws IOException {
+    public boolean postReceiverAsync() throws IOException {
         if (isClose.get()) {
             throw new IOException("Current channel is closed!!");
         }
-        tempReceiverIoArgs = args;
         return ioProvider.registerInput(channel, inputCallback);
     }
 
     @Override
-    public boolean sendAsync(IoArgs args, IoArgs.IoArgsEventListener listener) throws IOException {
+    public void setSenderEventProcessor(IoArgs.IoArgsEventProcessor processor) {
+        this.sendEventProcessor = processor;
+    }
+
+    @Override
+    public boolean postSendAsync() throws IOException {
         if (isClose.get()) {
             throw new IOException("Current channel is closed!!");
         }
-        sendEventListener = listener;
-        //储存要发送的数据
-        outputCallback.setAttach(args);
         return ioProvider.registerOutput(channel, outputCallback);
     }
+
 
     @Override
     public void close() throws IOException {
@@ -114,6 +112,7 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
             statusChangedListener.onChannelClose(channel);
         }
     }
+
 
     public interface onChannelStatusChangedListener {
         void onChannelClose(SocketChannel channel);

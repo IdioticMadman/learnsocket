@@ -32,7 +32,22 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher {
     //当前packet需要接收的总大小
     private int total = 0;
 
-    private IoArgs.IoArgsEventListener eventListener = new IoArgs.IoArgsEventListener() {
+    private IoArgs.IoArgsEventProcessor receiveProcessor = new IoArgs.IoArgsEventProcessor() {
+        @Override
+        public IoArgs provideIoArgs() {
+            return ioArgs;
+        }
+
+        @Override
+        public void onConsumeFailed(IoArgs ioArgs, Exception exception) {
+
+        }
+
+        @Override
+        public void onConsumeComplete(IoArgs ioArgs) {
+
+        }
+
         @Override
         public void onStart(IoArgs args) {
             //开始之前设置我们这次要读取多少位数据
@@ -60,7 +75,7 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher {
     public AsyncReceiverDispatcher(Receiver receiver, ReceiverPacketCallback packetCallback) {
         this.receiver = receiver;
         //设置接收监听
-        this.receiver.setReceiverEventListener(eventListener);
+        this.receiver.setReceiveEventProcessor(receiveProcessor);
         this.packetCallback = packetCallback;
     }
 
@@ -87,7 +102,7 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher {
 
     private void registerReceiver() {
         try {
-            receiver.receiverAsync(ioArgs);
+            receiver.postReceiverAsync();
         } catch (IOException e) {
             closeAndNotify();
         }

@@ -4,13 +4,21 @@ import java.io.Closeable;
 import java.io.IOException;
 
 public interface Sender extends Closeable {
+
+    /**
+     * 接受数据监听
+     *
+     * @param processor 接受监听
+     * @return
+     * @throws IOException
+     */
+    void setSenderEventProcessor(IoArgs.IoArgsEventProcessor processor);
+
     /**
      * 异步发送数据
      *
-     * @param args     数据
-     * @param listener 回调监听
      * @return 是否发送成功
      * @throws IOException IO操作异常
      */
-    boolean sendAsync(IoArgs args, IoArgs.IoArgsEventListener listener) throws IOException;
+    boolean postSendAsync() throws IOException;
 }

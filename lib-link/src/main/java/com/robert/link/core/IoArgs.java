@@ -3,40 +3,53 @@ package com.robert.link.core;
 import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.channels.WritableByteChannel;
 
 /**
  * 封装byteBuffer的操作
  */
 public class IoArgs {
     private int limit = 256;
-    private byte[] buffer = new byte[256];
-    private ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
+    private ByteBuffer byteBuffer = ByteBuffer.allocate(256);
 
     /**
-     * 从bytes中读取数据到当前IoArgs中
+     * 从channel中读取数据到当前IoArgs中
      *
-     * @param bytes  需要被读取数据
-     * @param offset 偏移量
+     * @param channel 可读的channel
      * @return 读取数据的长度
      */
-    public int readFrom(byte[] bytes, int offset) {
-        int len = Math.min(bytes.length - offset, byteBuffer.remaining());
-        byteBuffer.put(bytes, offset, len);
-        return len;
+    public int readFrom(ReadableByteChannel channel) throws IOException {
+        startWriting();
+        int bytesProduce = 0;
+        while (byteBuffer.hasRemaining()) {
+            int len = channel.read(byteBuffer);
+            if (len < 0) {
+                throw new EOFException();
+            }
+            bytesProduce += len;
+        }
+        finishWriting();
+        return bytesProduce;
     }
 
     /**
-     * 从IoArgs中写出数据到bytes
+     * 从IoArgs中写出数据到channel
      *
-     * @param bytes  写入目标
-     * @param offset 偏移量
+     * @param channel 写入的channel
      * @return 写入数据的长度
      */
-    public int writeTo(byte[] bytes, int offset) {
-        int len = Math.min(bytes.length - offset, byteBuffer.remaining());
-        byteBuffer.get(bytes, offset, len);
-        return len;
+    public int writeTo(WritableByteChannel channel) throws IOException {
+        int bytesProduce = 0;
+        while (byteBuffer.hasRemaining()) {
+            int len = channel.write(byteBuffer);
+            if (len < 0) {
+                throw new EOFException();
+            }
+            bytesProduce += len;
+        }
+        return bytesProduce;
     }
 
     /**
@@ -87,7 +100,9 @@ public class IoArgs {
      * @param length
      */
     public void writeLength(int length) {
+        startWriting();
         this.byteBuffer.putInt(length);
+        finishWriting();
     }
 
     /**
@@ -119,10 +134,32 @@ public class IoArgs {
         return byteBuffer.capacity();
     }
 
-    public interface IoArgsEventListener {
-        void onStart(IoArgs args);
+    /**
+     * IoArgs 提供者、处理者
+     */
+    public interface IoArgsEventProcessor {
+        /**
+         * 提供一份可供消费的IoArgs
+         *
+         * @return IoArgs
+         */
+        IoArgs provideIoArgs();
 
-        void onComplete(IoArgs args);
+        /**
+         * 消费失败时回调
+         *
+         * @param ioArgs
+         * @param exception
+         */
+        void onConsumeFailed(IoArgs ioArgs, Exception exception);
+
+        /**
+         * 消费完成回调
+         *
+         * @param ioArgs
+         */
+        void onConsumeComplete(IoArgs ioArgs);
     }
+
 
 }

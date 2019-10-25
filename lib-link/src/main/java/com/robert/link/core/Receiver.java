@@ -8,18 +8,17 @@ public interface Receiver extends Closeable {
     /**
      * 接受数据监听
      *
-     * @param listener 接受监听
+     * @param processor 接受监听
      * @return
      * @throws IOException
      */
-    void setReceiverEventListener(IoArgs.IoArgsEventListener listener);
+    void setReceiveEventProcessor(IoArgs.IoArgsEventProcessor processor);
 
     /**
      * 接收数据
      *
-     * @param args
-     * @return
+     * @return 是否注册成功
      * @throws IOException
      */
-    boolean receiverAsync(IoArgs args) throws IOException;
+    boolean postReceiverAsync() throws IOException;
 }
