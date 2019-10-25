@@ -9,19 +9,33 @@ import java.nio.channels.SocketChannel;
  * 封装byteBuffer的操作
  */
 public class IoArgs {
-    private int limit = 0;
+    private int limit = 256;
     private byte[] buffer = new byte[256];
     private ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
 
+    /**
+     * 从bytes中读取数据到当前IoArgs中
+     *
+     * @param bytes  需要被读取数据
+     * @param offset 偏移量
+     * @return 读取数据的长度
+     */
     public int readFrom(byte[] bytes, int offset) {
         int len = Math.min(bytes.length - offset, byteBuffer.remaining());
-        byteBuffer.get(bytes, offset, len);
+        byteBuffer.put(bytes, offset, len);
         return len;
     }
 
+    /**
+     * 从IoArgs中写出数据到bytes
+     *
+     * @param bytes  写入目标
+     * @param offset 偏移量
+     * @return 写入数据的长度
+     */
     public int writeTo(byte[] bytes, int offset) {
         int len = Math.min(bytes.length - offset, byteBuffer.remaining());
-        byteBuffer.put(bytes, offset, len);
+        byteBuffer.get(bytes, offset, len);
         return len;
     }
 
@@ -86,14 +100,16 @@ public class IoArgs {
     }
 
     /**
-     * 开始写入
+     * 开始写入，并指定要写入的数据长度
      */
     public void startWriting() {
         byteBuffer.clear();
+        //定义容纳空间
+        byteBuffer.limit(limit);
     }
 
     /**
-     * 结束写入
+     * 结束写入，反转position
      */
     public void finishWriting() {
         byteBuffer.flip();

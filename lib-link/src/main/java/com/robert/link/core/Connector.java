@@ -34,6 +34,7 @@ public class Connector implements Closeable, SocketChannelAdapter.onChannelStatu
     };
 
     public void setUp(SocketChannel socketChannel) throws IOException {
+        socketChannel.configureBlocking(false);
         this.channel = socketChannel;
 
         IoContext context = IoContext.get();

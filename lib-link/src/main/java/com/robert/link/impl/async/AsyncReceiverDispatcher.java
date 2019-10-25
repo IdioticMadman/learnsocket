@@ -76,12 +76,11 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher {
         if (count > 0) {
             tempPacket.save(buffer, count);
             position += count;
-        }
-
-        //检查是否接收完成
-        if (position == total) {
-            completeReceivePacket();
-            this.tempPacket = null;
+            //检查是否接收完成
+            if (position == total) {
+                completeReceivePacket();
+                this.tempPacket = null;
+            }
         }
     }
 

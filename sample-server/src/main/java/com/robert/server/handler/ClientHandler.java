@@ -7,12 +7,10 @@ import com.robert.util.PrintUtil;
 import java.io.*;
 import java.nio.channels.SocketChannel;
 
-public class ClientHandler {
+public class ClientHandler extends Connector {
 
     private final ClientHandlerCallback clientHandlerCallback;
-    private final SocketChannel socket;
     private final String clientInfo;
-    private final Connector connector;
 
     /**
      * @param socket                客户端连接的socket
@@ -20,25 +18,9 @@ public class ClientHandler {
      * @throws IOException 操作异常
      */
     public ClientHandler(SocketChannel socket, ClientHandlerCallback clientHandlerCallback) throws IOException {
-        this.socket = socket;
-        socket.configureBlocking(false);
-        Connector connector = new Connector() {
-            @Override
-            public void onChannelClose(SocketChannel channel) {
-                super.onChannelClose(channel);
-                ClientHandler.this.exitBySelf();
-            }
-
-            @Override
-            public void onReceiverNewMessage(String msg) {
-                super.onReceiverNewMessage(msg);
-                ClientHandler.this.clientHandlerCallback.onMessageArrived(ClientHandler.this, msg);
-            }
-        };
-        connector.setUp(socket);
-        this.connector = connector;
         this.clientHandlerCallback = clientHandlerCallback;
         this.clientInfo = socket.getRemoteAddress().toString();
+        this.setUp(socket);
         PrintUtil.println("新客户端连接：" + clientInfo);
     }
 
@@ -46,14 +28,16 @@ public class ClientHandler {
         return clientInfo;
     }
 
+    @Override
+    public void onChannelClose(SocketChannel channel) {
+        super.onChannelClose(channel);
+        exitBySelf();
+    }
 
-    /**
-     * 发送消息
-     *
-     * @param message
-     */
-    public void send(String message) {
-        connector.send(message);
+    @Override
+    public void onReceiverNewMessage(String msg) {
+        super.onReceiverNewMessage(msg);
+        clientHandlerCallback.onMessageArrived(this, msg);
     }
 
     /**
@@ -74,10 +58,9 @@ public class ClientHandler {
      * 退出，释放资源
      */
     public void exit() {
-        CloseUtils.close(socket, connector);
+        CloseUtils.close(this);
         PrintUtil.println("客户端已退出：" + clientInfo);
     }
-
 
 
 }
