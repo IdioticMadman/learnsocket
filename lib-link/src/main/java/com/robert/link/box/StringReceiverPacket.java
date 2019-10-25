@@ -2,29 +2,31 @@ package com.robert.link.box;
 
 import com.robert.link.core.ReceiverPacket;
 
+import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
 import java.io.IOException;
 
-public class StringReceiverPacket extends ReceiverPacket {
-    private final byte[] bytes;
+public class StringReceiverPacket extends ReceiverPacket<ByteArrayOutputStream> {
+    private String string;
     private int position;
 
     public StringReceiverPacket(int len) {
-        bytes = new byte[len];
-        length = len;
+        this.length = len;
     }
 
     @Override
-    public void save(byte[] bytes, int count) {
-        System.arraycopy(bytes, 0, this.bytes, position, count);
-        position += count;
+    public void closeStream(ByteArrayOutputStream stream) throws IOException {
+        string = new String(stream.toByteArray());
+        super.closeStream(stream);
     }
 
     public String string() {
-        return new String(bytes, 0, position);
+        return string;
     }
 
     @Override
-    public void close() throws IOException {
-
+    public ByteArrayOutputStream createStream() {
+        return new ByteArrayOutputStream((int) length);
     }
+
 }

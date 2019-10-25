@@ -2,10 +2,10 @@ package com.robert.link.box;
 
 import com.robert.link.core.SendPacket;
 
-import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 
-public class StringSendPacket extends SendPacket {
+public class StringSendPacket extends SendPacket<ByteArrayInputStream> {
 
     private final byte[] bytes;
 
@@ -15,12 +15,8 @@ public class StringSendPacket extends SendPacket {
     }
 
     @Override
-    public byte[] bytes() {
-        return bytes;
+    public ByteArrayInputStream createStream() {
+        return new ByteArrayInputStream(bytes);
     }
 
-    @Override
-    public void close() throws IOException {
-
-    }
 }
