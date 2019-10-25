@@ -40,6 +40,7 @@ public class Client {
         do {
             try {
                 line = reader.readLine();
+                if (line == null) continue;
                 tcpClient.send(line);
                 tcpClient.send(line);
                 tcpClient.send(line);

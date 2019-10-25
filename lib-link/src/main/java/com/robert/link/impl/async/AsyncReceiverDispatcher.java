@@ -44,6 +44,7 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher {
                 //读取包
                 receiverSize = Math.min(total - position, args.capacity());
             }
+            //设置读取长度
             args.limit(receiverSize);
         }
 
@@ -54,6 +55,43 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher {
             registerReceiver();
         }
     };
+
+
+    public AsyncReceiverDispatcher(Receiver receiver, ReceiverPacketCallback packetCallback) {
+        this.receiver = receiver;
+        //设置接收监听
+        this.receiver.setReceiverEventListener(eventListener);
+        this.packetCallback = packetCallback;
+    }
+
+    @Override
+    public void start() {
+        registerReceiver();
+    }
+
+    @Override
+    public void stop() {
+
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (isClosed.compareAndSet(false, true)) {
+            ReceiverPacket tempPacket = this.tempPacket;
+            if (tempPacket != null) {
+                this.tempPacket = null;
+                CloseUtils.close(tempPacket);
+            }
+        }
+    }
+
+    private void registerReceiver() {
+        try {
+            receiver.receiverAsync(ioArgs);
+        } catch (IOException e) {
+            closeAndNotify();
+        }
+    }
 
     /**
      * 解析数据到packet
@@ -91,43 +129,10 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher {
         packetCallback.onReceiverPacketComplete(tempPacket);
     }
 
-    public AsyncReceiverDispatcher(Receiver receiver, ReceiverPacketCallback packetCallback) {
-        this.receiver = receiver;
-        //设置接收监听
-        this.receiver.setReceiverEventListener(eventListener);
-        this.packetCallback = packetCallback;
-    }
-
-    @Override
-    public void start() {
-        registerReceiver();
-    }
-
-    private void registerReceiver() {
-        try {
-            receiver.receiverAsync(ioArgs);
-        } catch (IOException e) {
-            closeAndNotify();
-        }
-    }
 
     private void closeAndNotify() {
         CloseUtils.close(this);
     }
 
-    @Override
-    public void stop() {
 
-    }
-
-    @Override
-    public void close() throws IOException {
-        if (isClosed.compareAndSet(false, true)) {
-            ReceiverPacket tempPacket = this.tempPacket;
-            if (tempPacket != null) {
-                this.tempPacket = null;
-                CloseUtils.close(tempPacket);
-            }
-        }
-    }
 }

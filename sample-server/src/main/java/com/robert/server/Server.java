@@ -28,6 +28,7 @@ public class Server {
         do {
             try {
                 line = reader.readLine();
+                if (line == null) continue;
                 tcpServer.broadcast(line);
             } catch (IOException e) {
                 e.printStackTrace();
