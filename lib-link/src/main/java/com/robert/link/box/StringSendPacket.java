@@ -1,22 +1,19 @@
 package com.robert.link.box;
 
-import com.robert.link.core.SendPacket;
 
-import java.io.ByteArrayInputStream;
+import com.robert.link.core.Packet;
+
 import java.nio.charset.StandardCharsets;
 
-public class StringSendPacket extends SendPacket<ByteArrayInputStream> {
-
-    private final byte[] bytes;
+public class StringSendPacket extends BytesSendPacket {
 
     public StringSendPacket(String msg) {
-        this.bytes = msg.getBytes(StandardCharsets.UTF_8);
-        this.length = bytes.length;
+        super(msg.getBytes(StandardCharsets.UTF_8));
     }
+
 
     @Override
-    public ByteArrayInputStream createStream() {
-        return new ByteArrayInputStream(bytes);
+    public byte type() {
+        return Packet.TYPE_MEMORY_STRING;
     }
-
 }

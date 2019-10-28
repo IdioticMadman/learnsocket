@@ -1,6 +1,6 @@
 package com.robert.link.core;
 
-import com.robert.link.box.StringReceiverPacket;
+import com.robert.link.box.StringReceivePacket;
 import com.robert.link.box.StringSendPacket;
 import com.robert.link.impl.SocketChannelAdapter;
 import com.robert.link.impl.async.AsyncReceiverDispatcher;
@@ -27,8 +27,8 @@ public class Connector implements Closeable, SocketChannelAdapter.onChannelStatu
 
     //包体接收回调
     private ReceiverDispatcher.ReceiverPacketCallback receiverPacketCallback = packet -> {
-        if (packet instanceof StringReceiverPacket) {
-            String msg = ((StringReceiverPacket) packet).string();
+        if (packet instanceof StringReceivePacket) {
+            String msg = ((StringReceivePacket) packet).entity();
             onReceiverNewMessage(msg);
         }
     };

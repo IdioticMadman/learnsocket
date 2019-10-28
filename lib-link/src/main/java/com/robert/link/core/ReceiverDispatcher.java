@@ -19,10 +19,10 @@ public interface ReceiverDispatcher extends Closeable {
 
 
     /**
-     *
+     * 接受到packet的回调
      */
     interface ReceiverPacketCallback {
-        void onReceiverPacketComplete(ReceiverPacket packet);
+        void onReceiverPacketComplete(ReceivePacket packet);
     }
 
 }

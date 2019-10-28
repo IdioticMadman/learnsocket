@@ -1,10 +1,10 @@
 package com.robert.link.impl.async;
 
-import com.robert.link.box.StringReceiverPacket;
+import com.robert.link.box.StringReceivePacket;
 import com.robert.link.core.IoArgs;
 import com.robert.link.core.Receiver;
 import com.robert.link.core.ReceiverDispatcher;
-import com.robert.link.core.ReceiverPacket;
+import com.robert.link.core.ReceivePacket;
 import com.robert.util.CloseUtils;
 
 import java.io.IOException;
@@ -26,7 +26,7 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher, IoArgs.IoArg
     //和socketChannel打交道的数据载体
     private IoArgs ioArgs = new IoArgs();
     //临时的接收的packet
-    private ReceiverPacket<?> tempPacket;
+    private ReceivePacket<?> tempPacket;
     //当前packet接受到的数据位置
     private long position = 0;
     //当前packet需要接收的总大小
@@ -76,7 +76,7 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher, IoArgs.IoArg
         if (tempPacket == null) {
             //初始化临时接收packet
             int length = args.readLength();
-            tempPacket = new StringReceiverPacket(length);
+            tempPacket = new StringReceivePacket(length);
             tempChannel = Channels.newChannel(tempPacket.open());
             total = length;
             position = 0;
@@ -103,7 +103,7 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher, IoArgs.IoArg
         CloseUtils.close(writableChannel);
         this.tempChannel = null;
         //关闭临时packet
-        ReceiverPacket packet = this.tempPacket;
+        ReceivePacket packet = this.tempPacket;
         CloseUtils.close(packet);
         this.tempPacket = null;
 
