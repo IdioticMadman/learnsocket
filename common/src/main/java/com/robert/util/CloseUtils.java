@@ -13,6 +13,7 @@ public class CloseUtils {
     public static void close(Closeable... closable) {
         if (closable != null) {
             for (Closeable closeable : closable) {
+                if (closeable == null) continue;
                 try {
                     closeable.close();
                 } catch (IOException e) {

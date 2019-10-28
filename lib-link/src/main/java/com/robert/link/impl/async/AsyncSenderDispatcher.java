@@ -4,6 +4,7 @@ import com.robert.link.core.*;
 import com.robert.util.CloseUtils;
 
 import java.io.IOException;
+import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -17,13 +18,13 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
 
     private final Queue<SendPacket> queue = new ConcurrentLinkedDeque<>();
 
-    private ReadableByteChannel sendChannel;
+    private ReadableByteChannel tempChannel;
     private IoArgs ioArgs = new IoArgs();
 
     //当前包的进度的值
     private long total;
     private long position;
-    private SendPacket tempPacket;
+    private SendPacket<?> tempPacket;
 
     public AsyncSenderDispatcher(Sender sender) {
         this.sender = sender;
@@ -53,6 +54,9 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
         return sendPacket;
     }
 
+    /**
+     * 发送下一个packet，并关闭之前的packet
+     */
     private void sendNextPacket() {
         SendPacket temp = this.tempPacket;
         if (temp != null) {
@@ -72,6 +76,10 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
         sendCurrentPacket();
     }
 
+    /**
+     * 发送当前packet
+     * 如已发送完毕，触发下一个packet的发送
+     */
     private void sendCurrentPacket() {
 
         if (position >= total) {
@@ -92,18 +100,21 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
     /**
      * 发送完毕某个packet，释放对应资源，以及重置相关标志
      *
-     * @param isSuccess 是否正常关闭，包完全发送成功，则视为成功，反之则失败
+     * @param isSuccess 是否正常关闭，包完全发送成功，则视为成功，其他情况则失败
      */
     private void completeSendPacket(boolean isSuccess) {
 
-        SendPacket packet = this.tempPacket;
-        if (packet == null) {
-            return;
-        }
+        ReadableByteChannel readableChannel = this.tempChannel;
+        CloseUtils.close(readableChannel);
+        this.tempChannel = null;
 
+        SendPacket packet = this.tempPacket;
+        CloseUtils.close(packet);
+        this.tempPacket = null;
+
+        //重置标志，并释放当前packet的资源
         position = 0;
         total = 0;
-        CloseUtils.close(packet, sendChannel);
     }
 
     private void closeAndNotify() {
@@ -127,36 +138,26 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
     @Override
     public IoArgs provideIoArgs() {
         IoArgs ioArgs = this.ioArgs;
-
-        //清空ioArgs开始写入数据
-        ioArgs.startWriting();
-
-        if (position >= total) {
-            //当前包发送完成
-            sendNextPacket();
-            return;
-        } else if (position == 0) {
-            //写入包体长度先
-            ioArgs.writeLength(total);
+        if (tempChannel == null) {
+            tempChannel = Channels.newChannel(tempPacket.open());
+            ioArgs.limit(4);
+            ioArgs.writeLength((int) total);
+        } else {
+            ioArgs.limit((int) Math.min(ioArgs.capacity(), total - position));
+            try {
+                int count = ioArgs.readFrom(tempChannel);
+                position += count;
+            } catch (IOException e) {
+                e.printStackTrace();
+                return null;
+            }
         }
-        byte[] bytes = tempPacket.bytes();
-        int count = ioArgs.readFrom(bytes, position);
-        position += count;
-
-        //完成数据封装
-        ioArgs.finishWriting();
-        try {
-            sender.sendAsync(ioArgs, argsEventListener);
-        } catch (IOException e) {
-            closeAndNotify();
-        }
-
-        return null;
+        return ioArgs;
     }
 
     @Override
     public void onConsumeFailed(IoArgs ioArgs, Exception exception) {
-
+        exception.printStackTrace();
     }
 
     @Override

@@ -3,12 +3,10 @@ package com.robert.link.box;
 import com.robert.link.core.ReceiverPacket;
 
 import java.io.ByteArrayOutputStream;
-import java.io.Closeable;
 import java.io.IOException;
 
 public class StringReceiverPacket extends ReceiverPacket<ByteArrayOutputStream> {
     private String string;
-    private int position;
 
     public StringReceiverPacket(int len) {
         this.length = len;
