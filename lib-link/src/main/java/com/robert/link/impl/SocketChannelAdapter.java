@@ -29,13 +29,16 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
             if (isClose.get()) {
                 return;
             }
-            IoArgs.IoArgsEventProcessor receiveEventProcessor = SocketChannelAdapter.this.receiveEventProcessor;
-            IoArgs ioArgs = receiveEventProcessor.provideIoArgs();
+            IoArgs.IoArgsEventProcessor processor = SocketChannelAdapter.this.receiveEventProcessor;
+            IoArgs ioArgs = processor.provideIoArgs();
             try {
-                if (ioArgs.readFrom(channel) > 0) {
-                    receiveEventProcessor.onConsumeComplete(ioArgs);
+                if (ioArgs == null) {
+                    processor.onConsumeFailed(ioArgs, new IOException("Processor provider IoArgs is null"));
+                } else if (ioArgs.readFrom(channel) > 0) {
+                    //读取到缓冲大小的数据
+                    processor.onConsumeComplete(ioArgs);
                 } else {
-                    receiveEventProcessor.onConsumeFailed(ioArgs, new IOException("Cannot readFrom any data!!!"));
+                    processor.onConsumeFailed(ioArgs, new IOException("Cannot readFrom any data!!!"));
                 }
             } catch (IOException ignore) {
                 CloseUtils.close(SocketChannelAdapter.this);
@@ -55,7 +58,10 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
             //获取待发送的数据
             IoArgs ioArgs = processor.provideIoArgs();
             try {
-                if (ioArgs.writeTo(channel) > 0) {
+                if (ioArgs == null) {
+                    processor.onConsumeFailed(ioArgs, new IOException("Processor provider IoArgs is null"));
+                } else if (ioArgs.writeTo(channel) > 0) {
+                    //当前写出完毕
                     processor.onConsumeComplete(ioArgs);
                 } else {
                     processor.onConsumeFailed(ioArgs, new IOException("Cannot write any data!!"));

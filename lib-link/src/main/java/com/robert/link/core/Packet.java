@@ -75,4 +75,11 @@ public abstract class Packet<Stream extends Closeable> implements Closeable {
     public long length() {
         return length;
     }
+
+    /**
+     * @return frame的头部的信息
+     */
+    public byte[] headerInfo() {
+        return null;
+    }
 }
