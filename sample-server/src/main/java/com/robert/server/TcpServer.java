@@ -4,6 +4,7 @@ import com.robert.server.handler.ClientHandler;
 import com.robert.util.CloseUtils;
 import com.robert.util.PrintUtil;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -23,6 +24,10 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback {
      */
     private final int port;
     /**
+     * 文件的缓存目录
+     */
+    private final File cacheDir;
+    /**
      * 监听客户端连接
      */
     private ClientListener listener;
@@ -39,9 +44,10 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback {
     private Selector selector;
     private ServerSocketChannel serverSocket;
 
-    public TcpServer(int port) {
+    public TcpServer(int port, File cacheDir) {
         this.port = port;
-        forwardingThreadPoolExecutor = Executors.newSingleThreadExecutor();
+        this.forwardingThreadPoolExecutor = Executors.newSingleThreadExecutor();
+        this.cacheDir = cacheDir;
     }
 
     /**
@@ -154,7 +160,8 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback {
                             ServerSocketChannel serverSocket = (ServerSocketChannel) key.channel();
                             SocketChannel socket = serverSocket.accept();
 
-                            ClientHandler clientHandler = new ClientHandler(socket, TcpServer.this);
+                            ClientHandler clientHandler = new ClientHandler(socket,
+                                    TcpServer.this, cacheDir);
                             synchronized (TcpServer.this) {
                                 clientHandlers.add(clientHandler);
                             }

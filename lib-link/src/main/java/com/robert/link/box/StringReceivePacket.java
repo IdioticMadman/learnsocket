@@ -5,20 +5,15 @@ import com.robert.link.core.ReceivePacket;
 
 import java.io.ByteArrayOutputStream;
 
-public class StringReceivePacket extends ReceivePacket<ByteArrayOutputStream, String> {
+public class StringReceivePacket extends AbsByteArrayReceivePacket<String> {
 
-    public StringReceivePacket(int len) {
+    public StringReceivePacket(long len) {
         super(len);
     }
 
     @Override
     public String buildEntity(ByteArrayOutputStream stream) {
         return new String(stream.toByteArray());
-    }
-
-    @Override
-    public ByteArrayOutputStream createStream() {
-        return new ByteArrayOutputStream((int) length);
     }
 
     @Override

@@ -14,6 +14,6 @@ public class PrintUtil {
      * @param args    参数
      */
     public static void println(String message, Object... args) {
-        System.out.println(dateFormat.format(new Date()) + ": " + String.format(message, args));
+        System.out.println(dateFormat.format(new Date()) + " -> " + String.format(message, args));
     }
 }

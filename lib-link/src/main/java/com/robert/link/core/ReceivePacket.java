@@ -11,7 +11,7 @@ public abstract class ReceivePacket<Stream extends OutputStream, Entity> extends
     //实体对象
     private Entity entity;
 
-    public ReceivePacket(int len) {
+    public ReceivePacket(long len) {
         this.length = len;
     }
 

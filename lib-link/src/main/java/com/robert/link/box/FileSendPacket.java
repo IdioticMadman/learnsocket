@@ -1,5 +1,6 @@
 package com.robert.link.box;
 
+import com.robert.link.core.Packet;
 import com.robert.link.core.SendPacket;
 
 import java.io.File;
@@ -20,8 +21,12 @@ public class FileSendPacket extends SendPacket<FileInputStream> {
         try {
             return new FileInputStream(file);
         } catch (FileNotFoundException e) {
-            e.printStackTrace();
+            return null;
         }
-        return null;
+    }
+
+    @Override
+    public byte type() {
+        return Packet.TYPE_STREAM_FILE;
     }
 }

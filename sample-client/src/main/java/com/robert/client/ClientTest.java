@@ -1,8 +1,10 @@
 package com.robert.client;
 
 import com.robert.client.bean.ServerInfo;
+import com.robert.util.FileUtils;
 import com.robert.util.PrintUtil;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +13,7 @@ public class ClientTest {
     volatile static boolean done = false;
 
     public static void main(String[] args) throws IOException {
+        File cachePath = FileUtils.getCacheDir("client");
         ServerInfo serverInfo =
                 UDPSearcher.searchServer(5000);
 
@@ -18,7 +21,7 @@ public class ClientTest {
         PrintUtil.println("ServerInfo:" + serverInfo.toString());
         List<TcpClient> clients = new ArrayList<>();
         for (int i = 0; i < 1000; i++) {
-            TcpClient tcpClient = TcpClient.startConnect(serverInfo);
+            TcpClient tcpClient = TcpClient.startConnect(serverInfo, cachePath);
 
             if (tcpClient == null) {
                 PrintUtil.println("连接异常");

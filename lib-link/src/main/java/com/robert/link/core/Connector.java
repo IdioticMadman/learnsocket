@@ -1,5 +1,7 @@
 package com.robert.link.core;
 
+import com.robert.link.box.BytesReceivePacket;
+import com.robert.link.box.FileReceivePacket;
 import com.robert.link.box.StringReceivePacket;
 import com.robert.link.box.StringSendPacket;
 import com.robert.link.impl.SocketChannelAdapter;
@@ -8,6 +10,7 @@ import com.robert.link.impl.async.AsyncSenderDispatcher;
 import com.robert.util.PrintUtil;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
 import java.util.UUID;
@@ -15,9 +18,9 @@ import java.util.UUID;
 /**
  * 一个链接
  */
-public class Connector implements Closeable, SocketChannelAdapter.onChannelStatusChangedListener {
+public abstract class Connector implements Closeable, SocketChannelAdapter.onChannelStatusChangedListener {
 
-    private String key = UUID.randomUUID().toString();
+    protected String key = UUID.randomUUID().toString();
     private SocketChannel channel;
     private SenderDispatcher senderDispatcher;
     private ReceiverDispatcher receiverDispatcher;
@@ -26,12 +29,35 @@ public class Connector implements Closeable, SocketChannelAdapter.onChannelStatu
     private Receiver receiver;
 
     //包体接收回调
-    private ReceiverDispatcher.ReceiverPacketCallback receiverPacketCallback = packet -> {
-        if (packet instanceof StringReceivePacket) {
-            String msg = ((StringReceivePacket) packet).entity();
-            onReceiverNewMessage(msg);
+    private ReceiverDispatcher.ReceiverPacketCallback receiverPacketCallback = new ReceiverDispatcher.ReceiverPacketCallback() {
+        @Override
+        public void onReceiverPacketComplete(ReceivePacket packet) {
+            onReceivePacket(packet);
+        }
+
+        @Override
+        public ReceivePacket<?, ?> onArrivedNewPacket(byte type, long length) {
+            switch (type) {
+                case Packet.TYPE_MEMORY_BYTES:
+                    return new BytesReceivePacket(length);
+                case Packet.TYPE_MEMORY_STRING:
+                    return new StringReceivePacket(length);
+                case Packet.TYPE_STREAM_FILE:
+                    return new FileReceivePacket(length, createNewReceiveFile());
+                case Packet.TYPE_STREAM_DIRECT:
+                    return new BytesReceivePacket(length);
+                default:
+                    throw new UnsupportedOperationException("Unsupported packet type:" + type);
+            }
         }
     };
+
+    /**
+     * 接受到文件的回调
+     *
+     * @return 提供需被存储文件的位置
+     */
+    protected abstract File createNewReceiveFile();
 
     public void setUp(SocketChannel socketChannel) throws IOException {
         socketChannel.configureBlocking(false);
@@ -55,11 +81,13 @@ public class Connector implements Closeable, SocketChannelAdapter.onChannelStatu
         senderDispatcher.send(packet);
     }
 
-
-    public void onReceiverNewMessage(String msg) {
-        PrintUtil.println(key + ": " + msg);
+    public void send(SendPacket sendPacket) {
+        senderDispatcher.send(sendPacket);
     }
 
+    public void onReceivePacket(ReceivePacket packet) {
+        PrintUtil.println("key:%s, 接受到新的packet，Type: %d, length: %d", key, packet.type(), packet.length());
+    }
 
     @Override
     public void close() throws IOException {

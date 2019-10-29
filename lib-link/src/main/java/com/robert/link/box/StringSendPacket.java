@@ -11,7 +11,6 @@ public class StringSendPacket extends BytesSendPacket {
         super(msg.getBytes(StandardCharsets.UTF_8));
     }
 
-
     @Override
     public byte type() {
         return Packet.TYPE_MEMORY_STRING;
