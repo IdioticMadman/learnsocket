@@ -5,7 +5,7 @@ public class BytePriorityNode<Item> {
     private byte priority;
     private Item item;
 
-    private BytePriorityNode<Item> next;
+    public BytePriorityNode<Item> next;
 
     public BytePriorityNode(Item item) {
         this.item = item;

@@ -15,13 +15,37 @@ public class IoArgs {
     private ByteBuffer byteBuffer = ByteBuffer.allocate(256);
 
     /**
+     * 从数组中读取数据到当前byteBuffer中
+     */
+    public int readFrom(byte[] bytes, int offset, int count) {
+        int len = Math.min(count, byteBuffer.remaining());
+        if (len <= 0) {
+            return 0;
+        }
+        byteBuffer.put(bytes, offset, len);
+        return len;
+    }
+
+
+    /**
+     * 从当前byteBuffer中读取数据到指定数组中
+     */
+    public int writeTo(byte[] bytes, int offset) {
+        int len = Math.min(bytes.length - offset, byteBuffer.remaining());
+        if (len <= 0) {
+            return 0;
+        }
+        byteBuffer.get(bytes, offset, len);
+        return len;
+    }
+
+    /**
      * 从channel中读取数据到当前IoArgs中
      *
      * @param channel 可读的channel
      * @return 读取数据的长度
      */
     public int readFrom(ReadableByteChannel channel) throws IOException {
-        startWriting();
         int bytesProduce = 0;
         while (byteBuffer.hasRemaining()) {
             int len = channel.read(byteBuffer);
@@ -30,7 +54,6 @@ public class IoArgs {
             }
             bytesProduce += len;
         }
-        finishWriting();
         return bytesProduce;
     }
 
@@ -91,18 +114,7 @@ public class IoArgs {
      * @param limit 区间
      */
     public void limit(int limit) {
-        this.limit = limit;
-    }
-
-    /**
-     * 写入包长度
-     *
-     * @param length
-     */
-    public void writeLength(int length) {
-        startWriting();
-        this.byteBuffer.putInt(length);
-        finishWriting();
+        this.limit = Math.min(limit, byteBuffer.capacity());
     }
 
     /**
@@ -133,6 +145,25 @@ public class IoArgs {
     public int capacity() {
         return byteBuffer.capacity();
     }
+
+    /**
+     * @return 是否还有可写入空间
+     */
+    public boolean remained() {
+        return byteBuffer.remaining() > 0;
+    }
+
+    /**
+     * 填充空数据
+     *
+     * @param size 空数据的大小
+     */
+    public int fillEmpty(int size) {
+        int fillSize = Math.min(size, byteBuffer.remaining());
+        byteBuffer.position(byteBuffer.position() + fillSize);
+        return fillSize;
+    }
+
 
     /**
      * IoArgs 提供者、处理者
