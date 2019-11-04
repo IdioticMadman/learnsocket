@@ -59,12 +59,28 @@ public class AsyncPacketReader implements Closeable {
         }
     }
 
-
+    /**
+     * 关闭当前Reader，关闭时关闭所有Frame对应的Packet
+     *
+     */
     @Override
-    public void close() throws IOException {
-
+    public synchronized void close() {
+        while (node != null) {
+            Frame frame = node.item();
+            if (frame instanceof AbsSendPacketFrame) {
+                SendPacket packet = ((AbsSendPacketFrame) frame).getPacket();
+                packetProvider.completePacket(packet, false);
+            }
+            nodeSize = 0;
+            node = null;
+        }
     }
 
+    /**
+     * 从frame中填充到ioArgs中，准备到发送
+     *
+     * @return 提供的有数据的ioArgs
+     */
     public IoArgs fillData() {
         Frame currentFrame = getCurrentFrame();
         if (currentFrame == null) {
@@ -92,53 +108,95 @@ public class AsyncPacketReader implements Closeable {
         return null;
     }
 
-    private void popCurrentFrame() {
+    /**
+     * 添加新的Frame到当前队列中
+     */
+    private synchronized void appendNewFrame(Frame frame) {
+        BytePriorityNode<Frame> newNode = new BytePriorityNode<>(frame);
+        if (node != null) {
+            node.appendWithPriority(newNode);
+        } else {
+            node = newNode;
+        }
+        nodeSize++;
+    }
 
+    /**
+     * 弹出当前帧，队列头设置为下一个帧
+     * 当队列头为空的时候，尝试请求发送下一个packet了
+     */
+    private synchronized void popCurrentFrame() {
+        node = node.next;
+        nodeSize--;
+        if (node == null) {
+            requestTakePacket();
+        }
     }
 
 
-    private void appendNewFrame(Frame headerFrame) {
+    private synchronized Frame getCurrentFrame() {
+        if (node == null) {
+            return null;
+        }
 
+        return node.item();
     }
 
-    private Frame getCurrentFrame() {
-        return null;
-    }
 
+    /**
+     * 取消发送一份packet对应的帧，如果当前Packet已经发送部分数据。
+     *
+     * @param packet
+     */
+    synchronized void cancel(SendPacket packet) {
+        if (nodeSize == 0) {
+            //当前没有在发送的frame
+            return;
+        }
 
-    void cancel(SendPacket packet) {
-        synchronized (this) {
-            if (nodeSize == 0) {
-                //当前没有在发送的frame
-                return;
-            }
-
-            //找到对应的frame取消掉
-            for (BytePriorityNode<Frame> x = node, before = null; x != null; before = x, x = x.next) {
-                Frame frame = x.item();
-                if (frame instanceof AbsSendPacketFrame) {
-                    AbsSendPacketFrame packetFrame = (AbsSendPacketFrame) frame;
-                    if (packetFrame.getPacket() == packet) {
-                        boolean removable = packetFrame.abort();
-                        if (removable) {
-                            removeFrame(x, before);
-                            if (frame instanceof SendHeaderFrame) {
-                                //头帧还没有发送，直接取消，不用发送取消帧
-                                break;
-                            }
+        //找到对应的frame取消掉
+        for (BytePriorityNode<Frame> x = node, before = null; x != null; before = x, x = x.next) {
+            Frame frame = x.item();
+            if (frame instanceof AbsSendPacketFrame) {
+                AbsSendPacketFrame packetFrame = (AbsSendPacketFrame) frame;
+                if (packetFrame.getPacket() == packet) {
+                    boolean removable = packetFrame.abort();
+                    if (removable) {
+                        removeFrame(x, before);
+                        if (frame instanceof SendHeaderFrame) {
+                            //头帧还没有发送，直接取消，不用发送取消帧
+                            break;
                         }
-                        //发送取消帧
-                        CancelSendFrame cancelFrame = new CancelSendFrame(packetFrame.getBodyIdentifier());
-                        appendNewFrame(cancelFrame);
-                        packetProvider.completePacket(packet, false);
-                        break;
                     }
+                    //发送取消帧
+                    CancelSendFrame cancelFrame = new CancelSendFrame(packetFrame.getBodyIdentifier());
+                    appendNewFrame(cancelFrame);
+                    packetProvider.completePacket(packet, false);
+                    break;
                 }
             }
         }
     }
 
-    private void removeFrame(BytePriorityNode<Frame> node, BytePriorityNode<Frame> before) {
+    /**
+     * 移除一个frame
+     *
+     * @param node
+     * @param before
+     */
+    private synchronized void removeFrame(BytePriorityNode<Frame> node, BytePriorityNode<Frame> before) {
+        if (before == null) {
+            // A B C -> B C
+            this.node = node.next;
+        } else {
+            //A B C -> A C
+            before.next = node.next;
+        }
+        nodeSize--;
+        if (this.node == null) {
+            //当前队列为空
+            requestTakePacket();
+        }
 
     }
 
