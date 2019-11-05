@@ -71,4 +71,7 @@ public abstract class Frame {
     public abstract boolean handle(IoArgs args) throws IOException;
 
     public abstract Frame nextFrame();
+
+    public abstract int getConsumableLength();
+
 }

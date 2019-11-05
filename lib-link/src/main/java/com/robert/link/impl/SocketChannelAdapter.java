@@ -33,7 +33,7 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
             IoArgs ioArgs = processor.provideIoArgs();
             try {
                 if (ioArgs == null) {
-                    processor.onConsumeFailed(ioArgs, new IOException("Processor provider IoArgs is null"));
+                    processor.onConsumeFailed(null, new IOException("Processor provider IoArgs is null"));
                 } else if (ioArgs.readFrom(channel) > 0) {
                     //读取到缓冲大小的数据
                     processor.onConsumeComplete(ioArgs);
@@ -59,7 +59,7 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
             IoArgs ioArgs = processor.provideIoArgs();
             try {
                 if (ioArgs == null) {
-                    processor.onConsumeFailed(ioArgs, new IOException("Processor provider IoArgs is null"));
+                    processor.onConsumeFailed(null, new IOException("Processor provider IoArgs is null"));
                 } else if (ioArgs.writeTo(channel) > 0) {
                     //当前写出完毕
                     processor.onConsumeComplete(ioArgs);

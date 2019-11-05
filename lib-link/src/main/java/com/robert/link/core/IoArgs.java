@@ -154,7 +154,7 @@ public class IoArgs {
     }
 
     /**
-     * 填充空数据
+     * 发送方读取不到文件数据，填充空数据
      *
      * @param size 空数据的大小
      */
@@ -162,6 +162,15 @@ public class IoArgs {
         int fillSize = Math.min(size, byteBuffer.remaining());
         byteBuffer.position(byteBuffer.position() + fillSize);
         return fillSize;
+    }
+
+    /**
+     * 接收方停止接收，自己塞空数据
+     */
+    public int setEmpty(int size) {
+        int emptySize = Math.min(size, byteBuffer.remaining());
+        byteBuffer.position(byteBuffer.position() + emptySize);
+        return emptySize;
     }
 
 

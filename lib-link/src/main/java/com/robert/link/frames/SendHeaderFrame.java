@@ -12,7 +12,7 @@ import java.nio.channels.ReadableByteChannel;
 
 
 public class SendHeaderFrame extends AbsSendPacketFrame {
-    private static final int PACKET_HEADER_FRAME_MIN_LENGTH = 6;
+    static final int PACKET_HEADER_FRAME_MIN_LENGTH = 6;
     private final byte[] body;
 
     public SendHeaderFrame(short identifier, SendPacket packet) {

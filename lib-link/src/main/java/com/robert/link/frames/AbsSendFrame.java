@@ -10,7 +10,7 @@ public abstract class AbsSendFrame extends Frame {
 
     //当前头部剩余需被发送的大小
     volatile byte headerRemaining = Frame.FRAME_HEADER_LENGTH;
-
+    //当前Frame的长度
     volatile int bodyRemaining;
 
     public AbsSendFrame(int length, byte type, byte flag, short identifier) {
@@ -66,5 +66,10 @@ public abstract class AbsSendFrame extends Frame {
      */
     protected synchronized boolean isSending() {
         return headerRemaining < Frame.FRAME_HEADER_LENGTH;
+    }
+
+    @Override
+    public int getConsumableLength() {
+        return headerRemaining + bodyRemaining;
     }
 }

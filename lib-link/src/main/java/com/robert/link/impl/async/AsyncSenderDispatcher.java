@@ -20,7 +20,7 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
     //队列同步锁
     private final Object queueLock = new Object();
 
-    private AsyncPacketReader packetReader;
+    private final AsyncPacketReader packetReader = new AsyncPacketReader(this);
 
     public AsyncSenderDispatcher(Sender sender) {
         this.sender = sender;
