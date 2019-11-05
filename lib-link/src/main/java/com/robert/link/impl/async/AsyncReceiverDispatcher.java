@@ -87,5 +87,8 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher,
     @Override
     public void completePacket(ReceivePacket<?, ?> receivePacket, boolean isSucceed) {
         CloseUtils.close(receivePacket);
+        if (isSucceed) {
+            packetCallback.onReceiverPacketComplete(receivePacket);
+        }
     }
 }

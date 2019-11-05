@@ -65,7 +65,7 @@ public abstract class Frame {
     }
 
     public short getBodyIdentifier() {
-        return (short) (header[4] * 0xff);
+        return (short) (header[4] & 0xff);
     }
 
     public abstract boolean handle(IoArgs args) throws IOException;

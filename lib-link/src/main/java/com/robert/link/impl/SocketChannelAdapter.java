@@ -49,7 +49,7 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
     //当可以发送数据回调
     private IoProvider.HandlerOutputCallback outputCallback = new IoProvider.HandlerOutputCallback() {
         @Override
-        public void canProviderOutput(Object attach) {
+        public void canProviderOutput() {
             if (isClose.get()) {
                 return;
             }
