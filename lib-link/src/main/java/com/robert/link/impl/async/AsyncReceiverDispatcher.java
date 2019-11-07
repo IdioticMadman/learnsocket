@@ -72,10 +72,12 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher,
 
     @Override
     public void onConsumeComplete(IoArgs ioArgs) {
+        //有数据到达，但是已被关闭
+        if (isClosed.get()) return;
         //接收到数据包解析数据
         do {
             packetWriter.consumeIoArgs(ioArgs);
-        } while (ioArgs.remained());
+        } while (ioArgs.remained() && !isClosed.get());
         registerReceiver();
     }
 

@@ -2,15 +2,11 @@ package com.robert.link.impl;
 
 import com.robert.link.core.IoProvider;
 import com.robert.util.CloseUtils;
-import com.sun.istack.internal.Nullable;
-import com.sun.org.apache.bcel.internal.generic.Select;
 
 import java.io.IOException;
-import java.nio.channels.ClosedChannelException;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.*;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -38,10 +34,10 @@ public class IoSelectorProvider implements IoProvider {
         this.writeSelector = Selector.open();
         this.readSelector = Selector.open();
 
-        this.inputHandlePool = Executors.newFixedThreadPool(5,
+        this.inputHandlePool = Executors.newFixedThreadPool(20,
                 new IoProviderThreadFactory("IoProvider-input-thread"));
 
-        this.outputHandlePool = Executors.newFixedThreadPool(5,
+        this.outputHandlePool = Executors.newFixedThreadPool(20,
                 new IoProviderThreadFactory("IoProvider-output-thread"));
 
         //开启轮询读写就绪的channel
@@ -50,60 +46,17 @@ public class IoSelectorProvider implements IoProvider {
     }
 
     private void startRead() {
-        Thread thread = new Thread("IoSelectorProvider ReadSelector Thread") {
-            @Override
-            public void run() {
-                while (!isClose.get()) {
-                    try {
-                        if (readSelector.select() == 0) {
-                            waitSelection(inRegInput);
-                            continue;
-                        }
-                        Set<SelectionKey> selectionKeys = readSelector.selectedKeys();
-                        for (SelectionKey selectionKey : selectionKeys) {
-                            if (selectionKey.isValid()) {
-                                //异步处理读取数据，不阻塞当前轮询器
-                                handleSelection(selectionKey, SelectionKey.OP_READ, inputCallbackMap, inputHandlePool);
-                            }
-                        }
-                        selectionKeys.clear();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        };
-        thread.setPriority(Thread.MAX_PRIORITY);
+        String name = "IoSelectorProvider ReadSelector Thread";
+        HandleThread thread = new HandleThread(name, isClose, readSelector, inRegInput,
+                SelectionKey.OP_READ, inputCallbackMap, inputHandlePool);
         thread.start();
     }
 
 
     private void startWrite() {
-        Thread thread = new Thread("IoSelectorProvider WriteSelector Thread") {
-            @Override
-            public void run() {
-                while (!isClose.get()) {
-                    try {
-                        if (writeSelector.select() == 0) {
-                            waitSelection(inRegOutput);
-                            continue;
-                        }
-                        Set<SelectionKey> selectionKeys = writeSelector.selectedKeys();
-                        for (SelectionKey selectionKey : selectionKeys) {
-                            if (selectionKey.isValid()) {
-                                //异步处理写入数据，不阻塞当前轮询器
-                                handleSelection(selectionKey, SelectionKey.OP_WRITE, outputCallbackMap, outputHandlePool);
-                            }
-                        }
-                        selectionKeys.clear();
-
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        };
-        thread.setPriority(Thread.MAX_PRIORITY);
+        String name = "IoSelectorProvider WriteSelector Thread";
+        HandleThread thread = new HandleThread(name, isClose, writeSelector, inRegOutput,
+                SelectionKey.OP_WRITE, outputCallbackMap, outputHandlePool);
         thread.start();
     }
 
@@ -124,12 +77,12 @@ public class IoSelectorProvider implements IoProvider {
 
     @Override
     public void unRegisterInput(SocketChannel channel) {
-        unRegisterSelection(channel, readSelector, inputCallbackMap);
+        unRegisterSelection(channel, readSelector, inputCallbackMap, inRegInput);
     }
 
     @Override
     public void unRegisterOutput(SocketChannel channel) {
-        unRegisterSelection(channel, writeSelector, outputCallbackMap);
+        unRegisterSelection(channel, writeSelector, outputCallbackMap, inRegOutput);
     }
 
     @Override
@@ -141,10 +94,7 @@ public class IoSelectorProvider implements IoProvider {
             //清空回调
             inputCallbackMap.clear();
             outputCallbackMap.clear();
-            //唤醒selector
-            writeSelector.wakeup();
-            readSelector.wakeup();
-            //关闭selector
+            //直接关闭selector，不用wakeup
             CloseUtils.close(writeSelector, readSelector);
         }
     }
@@ -152,9 +102,16 @@ public class IoSelectorProvider implements IoProvider {
 
     private static void handleSelection(SelectionKey key, int keyOps,
                                         Map<SelectionKey, Runnable> callbackMap,
-                                        ExecutorService handlePool) {
+                                        ExecutorService handlePool, AtomicBoolean locker) {
         //取消监听
-        key.interestOps(key.readyOps() & ~keyOps);
+        //noinspection SynchronizationOnLocalVariableOrMethodParameter
+        synchronized (locker) {
+            try {
+                key.interestOps(key.readyOps() & ~keyOps);
+            } catch (CancelledKeyException e) {
+                return;
+            }
+        }
         Runnable runnable = callbackMap.get(key);
         if (runnable != null && !handlePool.isShutdown()) {
             //异步执行
@@ -185,7 +142,7 @@ public class IoSelectorProvider implements IoProvider {
 
     private static SelectionKey registerSelection(SocketChannel channel, Selector selector,
                                                   int registerOps, AtomicBoolean locker,
-                                                  Map<SelectionKey, Runnable> outputCallbackMap,
+                                                  Map<SelectionKey, Runnable> callbackMap,
                                                   Runnable callback) {
         //noinspection SynchronizationOnLocalVariableOrMethodParameter
         synchronized (locker) {
@@ -203,16 +160,14 @@ public class IoSelectorProvider implements IoProvider {
                 }
 
                 if (key == null) {
-                    try {
-                        //注册selector得到key
-                        key = channel.register(selector, registerOps);
-                        //根据key
-                        outputCallbackMap.put(key, callback);
-                    } catch (ClosedChannelException ignore) {
-                        return null;
-                    }
+                    //注册selector得到key
+                    key = channel.register(selector, registerOps);
+                    //根据key
+                    callbackMap.put(key, callback);
                 }
                 return key;
+            } catch (ClosedChannelException | CancelledKeyException | ClosedSelectorException e) {
+                return null;
             } finally {
                 locker.set(false);
                 try {
@@ -224,16 +179,88 @@ public class IoSelectorProvider implements IoProvider {
     }
 
     private static void unRegisterSelection(SocketChannel channel, Selector selector,
-                                            Map<SelectionKey, Runnable> callbackMap) {
-        if (channel.isRegistered()) {
-            SelectionKey key = channel.keyFor(selector);
-            if (key != null) {
-                //取消监听时间
-                key.cancel();
-                //移除回调
-                callbackMap.remove(key);
-                //唤醒退出循环
-                selector.wakeup();
+                                            Map<SelectionKey, Runnable> callbackMap, AtomicBoolean locker) {
+
+        //noinspection SynchronizationOnLocalVariableOrMethodParameter
+        synchronized (locker) {
+            locker.set(true);
+            selector.wakeup();
+            try {
+                if (channel.isRegistered()) {
+                    SelectionKey key = channel.keyFor(selector);
+                    if (key != null) {
+                        //取消监听时间
+                        key.cancel();
+                        //移除回调
+                        callbackMap.remove(key);
+                    }
+                }
+            } finally {
+                locker.set(false);
+                try {
+                    locker.notifyAll();
+                } catch (Exception ignore) {
+                }
+            }
+        }
+    }
+
+    static class HandleThread extends Thread {
+
+        private final AtomicBoolean isClose;
+        private final Selector selector;
+        private final AtomicBoolean locker;
+        private final int ops;
+        private final Map<SelectionKey, Runnable> callbackMap;
+        private final ExecutorService handlerPool;
+
+        HandleThread(String name, AtomicBoolean isClose, Selector selector,
+                     AtomicBoolean locker, int ops, Map<SelectionKey, Runnable> callbackMap,
+                     ExecutorService handlerPool) {
+            super(name);
+            setPriority(Thread.MAX_PRIORITY);
+            this.isClose = isClose;
+            this.selector = selector;
+            this.locker = locker;
+            this.ops = ops;
+            this.callbackMap = callbackMap;
+            this.handlerPool = handlerPool;
+        }
+
+        @Override
+        public void run() {
+
+            final AtomicBoolean isClose = this.isClose;
+            final Selector selector = this.selector;
+            final AtomicBoolean locker = this.locker;
+            final int ops = this.ops;
+            final Map<SelectionKey, Runnable> callbackMap = this.callbackMap;
+            final ExecutorService handlerPool = this.handlerPool;
+
+            while (!isClose.get()) {
+                try {
+                    if (selector.select() == 0) {
+                        waitSelection(locker);
+                        continue;
+                    } else if (locker.get()) {
+                        //注册时候被唤醒，但是返回了就绪的
+                        waitSelection(locker);
+                    }
+                    Set<SelectionKey> selectionKeys = selector.selectedKeys();
+                    Iterator<SelectionKey> iterator = selectionKeys.iterator();
+                    while (iterator.hasNext()) {
+                        SelectionKey selectionKey = iterator.next();
+                        if (selectionKey.isValid()) {
+                            //异步处理读取数据，不阻塞当前轮询器
+                            handleSelection(selectionKey, ops, callbackMap, handlerPool, locker);
+                        }
+                        iterator.remove();
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } catch (ClosedSelectorException e) {
+                    break;
+                }
             }
         }
     }

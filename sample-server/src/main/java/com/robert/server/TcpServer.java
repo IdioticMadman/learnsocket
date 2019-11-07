@@ -6,6 +6,7 @@ import com.robert.util.PrintUtil;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -43,6 +44,8 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback {
 
     private Selector selector;
     private ServerSocketChannel serverSocket;
+    private long sendSize;
+    private long receiveSize;
 
     public TcpServer(int port, File cacheDir) {
         this.port = port;
@@ -108,6 +111,7 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback {
         for (ClientHandler clientHandler : clientHandlers) {
             clientHandler.send(message);
         }
+        sendSize += clientHandlers.size();
     }
 
     @Override
@@ -117,16 +121,26 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback {
 
     @Override
     public void onMessageArrived(final ClientHandler handler, String msg) {
+        receiveSize++;
         // 打印到屏幕
         forwardingThreadPoolExecutor.execute(() -> {
             synchronized (TcpServer.this) {
                 for (ClientHandler clientHandler : clientHandlers) {
                     if (clientHandler != handler) {
                         clientHandler.send(msg);
+                        sendSize++;
                     }
                 }
             }
         });
+    }
+
+    public Object[] getStatusString() {
+        return new String[]{
+                "客户端数量：" + clientHandlers.size(),
+                "发送数量：" + sendSize,
+                "接收数量" + receiveSize,
+        };
     }
 
     public final class ClientListener extends Thread {
@@ -164,6 +178,7 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback {
                                     TcpServer.this, cacheDir);
                             synchronized (TcpServer.this) {
                                 clientHandlers.add(clientHandler);
+                                PrintUtil.println("当前客户端数量：" + clientHandlers.size());
                             }
                         }
                     }

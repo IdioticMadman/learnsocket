@@ -61,7 +61,6 @@ public class AsyncPacketReader implements Closeable {
 
     /**
      * 关闭当前Reader，关闭时关闭所有Frame对应的Packet
-     *
      */
     @Override
     public synchronized void close() {
@@ -71,9 +70,10 @@ public class AsyncPacketReader implements Closeable {
                 SendPacket packet = ((AbsSendPacketFrame) frame).getPacket();
                 packetProvider.completePacket(packet, false);
             }
-            nodeSize = 0;
-            node = null;
+            node = node.next;
         }
+        nodeSize = 0;
+        node = null;
     }
 
     /**

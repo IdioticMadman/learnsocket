@@ -50,7 +50,7 @@ public class ClientHandler extends Connector {
         super.onReceivePacket(packet);
         if (packet.type() == Packet.TYPE_MEMORY_STRING) {
             String message = (String) packet.entity();
-            PrintUtil.println("收到消息：%s : %s", key, message);
+//            PrintUtil.println("收到消息：%s : %s", key, message);
             clientHandlerCallback.onMessageArrived(this, message);
         }
     }

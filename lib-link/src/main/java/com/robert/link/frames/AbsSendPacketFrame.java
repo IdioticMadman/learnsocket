@@ -21,7 +21,7 @@ public abstract class AbsSendPacketFrame extends AbsSendFrame {
     }
 
     @Override
-    public synchronized boolean handle(IoArgs args) throws IOException {
+    public synchronized boolean  handle(IoArgs args) throws IOException {
         if (sendPacket == null && !isSending()) {
             //已取消，并且未发送任何数据，直接返回结束
             return true;

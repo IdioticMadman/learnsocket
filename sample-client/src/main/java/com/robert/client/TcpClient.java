@@ -35,10 +35,13 @@ public class TcpClient extends Connector {
     @Override
     public void onReceivePacket(ReceivePacket packet) {
         super.onReceivePacket(packet);
-        if (packet.type() == Packet.TYPE_MEMORY_STRING) {
-            String message = (String) packet.entity();
-            PrintUtil.println("%s : %s", key, message);
-        }
+
+        /*
+         if (packet.type() == Packet.TYPE_MEMORY_STRING) {
+           String message = (String) packet.entity();
+           PrintUtil.println("%s : %s", key, message);
+         }
+         */
     }
 
     public static TcpClient startConnect(ServerInfo serverInfo, File cachePath) throws IOException {

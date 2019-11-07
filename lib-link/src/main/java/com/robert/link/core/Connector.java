@@ -86,7 +86,7 @@ public abstract class Connector implements Closeable, SocketChannelAdapter.onCha
     }
 
     public void onReceivePacket(ReceivePacket packet) {
-        PrintUtil.println("key:%s, 接受到新的packet，Type: %d, length: %d", key, packet.type(), packet.length());
+//        PrintUtil.println("key:%s, 接受到新的packet，Type: %d, length: %d", key, packet.type(), packet.length());
     }
 
     @Override

@@ -12,13 +12,10 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
         AsyncPacketReader.PacketProvider {
 
     private final Sender sender;
-    private AtomicBoolean isSending = new AtomicBoolean(false);
+    private final AtomicBoolean isSending = new AtomicBoolean(false);
     private AtomicBoolean isClosed = new AtomicBoolean(false);
 
     private final Queue<SendPacket> queue = new ConcurrentLinkedDeque<>();
-
-    //队列同步锁
-    private final Object queueLock = new Object();
 
     private final AsyncPacketReader packetReader = new AsyncPacketReader(this);
 
@@ -29,16 +26,9 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
 
     @Override
     public void send(SendPacket packet) {
-        synchronized (queueLock) {
-            queue.offer(packet);
-            //判断是否在发送中，没有则触发发送
-            if (isSending.compareAndSet(false, true)) {
-                if (packetReader.requestTakePacket()) {
-                    //请求发送数据
-                    requestSend();
-                }
-            }
-        }
+        queue.offer(packet);
+        //判断是否在发送中，没有则触发发送
+        requestSend();
     }
 
     /**
@@ -48,14 +38,10 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
      */
     @Override
     public SendPacket takePacket() {
-        SendPacket sendPacket;
-        synchronized (queueLock) {
-            sendPacket = queue.poll();
-            if (sendPacket == null) {
-                //队列为空，取消发送状态
-                isSending.set(false);
-                return null;
-            }
+        SendPacket sendPacket = queue.poll();
+        if (sendPacket == null) {
+            //队列为空，取消发送状态
+            return null;
         }
         if (sendPacket.isCanceled()) {
             //packet被取消发送，取下一个
@@ -76,12 +62,25 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
      * 请求发送packet
      */
     private void requestSend() {
-        try {
-            //注册有数据要发送
-            sender.postSendAsync();
-        } catch (IOException e) {
-            closeAndNotify();
+        synchronized (isSending) {
+            if (isSending.get() || isClosed.get()) {
+                //在发送中或者关闭了，不需要取
+                return;
+            }
+            if (packetReader.requestTakePacket()) {
+                //请求是否有数据等待发送
+                try {
+                    //注册有数据要发送
+                    boolean isSucceed = sender.postSendAsync();
+                    if (isSucceed) {
+                        isSending.set(true);
+                    }
+                } catch (IOException e) {
+                    closeAndNotify();
+                }
+            }
         }
+
     }
 
     private void closeAndNotify() {
@@ -91,10 +90,7 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
 
     @Override
     public void cancel(SendPacket packet) {
-        boolean ret;
-        synchronized (queueLock) {
-            ret = queue.remove(packet);
-        }
+        boolean ret = queue.remove(packet);
         if (ret) {
             packet.cancel();
             return;
@@ -105,27 +101,33 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
     @Override
     public void close() throws IOException {
         if (isClosed.compareAndSet(false, true)) {
-            isSending.set(false);
             packetReader.close();
+            queue.clear();
+            synchronized (isSending) {
+                isSending.set(false);
+            }
         }
     }
 
     @Override
     public IoArgs provideIoArgs() {
-        return packetReader.fillData();
+        return isClosed.get() ? null : packetReader.fillData();
     }
 
     @Override
     public void onConsumeFailed(IoArgs ioArgs, Exception exception) {
-        if (ioArgs != null) {
-            exception.printStackTrace();
+        exception.printStackTrace();
+        synchronized (isSending){
+            isSending.set(false);
         }
+        requestSend();
     }
 
     @Override
     public void onConsumeComplete(IoArgs ioArgs) {
-        if (packetReader.requestTakePacket()) {
-            requestSend();
+        synchronized (isSending){
+            isSending.set(false);
         }
+        requestSend();
     }
 }

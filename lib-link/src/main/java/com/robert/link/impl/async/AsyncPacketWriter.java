@@ -83,6 +83,7 @@ public class AsyncPacketWriter implements Closeable {
         int bodyLength = frame.getBodyLength();
         synchronized (packetMap) {
             ReceiveModel model = packetMap.get(identifier);
+            if (model == null) return;
             model.unReceiveLength -= bodyLength;
             //如果当前packet的未接收的长度小于0，表示接收完成
             if (model.unReceiveLength <= 0) {
@@ -97,7 +98,7 @@ public class AsyncPacketWriter implements Closeable {
      */
     private void appendNewPacket(short bodyIdentifier, ReceivePacket packet) {
         synchronized (packetMap) {
-        ReceiveModel model = new ReceiveModel(packet);
+            ReceiveModel model = new ReceiveModel(packet);
             packetMap.put(bodyIdentifier, model);
         }
     }

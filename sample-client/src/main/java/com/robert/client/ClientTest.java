@@ -1,6 +1,8 @@
 package com.robert.client;
 
 import com.robert.client.bean.ServerInfo;
+import com.robert.link.core.IoContext;
+import com.robert.link.impl.IoSelectorProvider;
 import com.robert.util.FileUtils;
 import com.robert.util.PrintUtil;
 
@@ -14,13 +16,17 @@ public class ClientTest {
 
     public static void main(String[] args) throws IOException {
         File cachePath = FileUtils.getCacheDir("client");
+        IoContext.setup()
+                .ioProvider(new IoSelectorProvider())
+                .start();
+
         ServerInfo serverInfo =
                 UDPSearcher.searchServer(5000);
 
         if (serverInfo == null) return;
         PrintUtil.println("ServerInfo:" + serverInfo.toString());
         List<TcpClient> clients = new ArrayList<>();
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < 200; i++) {
             TcpClient tcpClient = TcpClient.startConnect(serverInfo, cachePath);
 
             if (tcpClient == null) {
@@ -44,25 +50,30 @@ public class ClientTest {
                     client.send("Hello~~~");
                 }
                 try {
-                    Thread.sleep(1000);
+                    Thread.sleep(1500);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
             }
         });
         thread.start();
-        PrintUtil.println("开始发送消息");
-        System.in.read();
-        done = true;
+        while (true) {
 
-        try {
-            thread.join();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
         }
 
-        for (TcpClient client : clients) {
-            client.exit();
-        }
+//        PrintUtil.println("done");
+//
+//        done = true;
+//
+//        try {
+//            thread.join();
+//        } catch (InterruptedException e) {
+//            e.printStackTrace();
+//        }
+//
+//        for (TcpClient client : clients) {
+//            client.exit();
+//        }
+//        IoContext.close();
     }
 }

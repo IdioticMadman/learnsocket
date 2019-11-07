@@ -1,5 +1,6 @@
 package com.robert.server;
 
+import com.robert.FooGui;
 import com.robert.common.TCPConstants;
 import com.robert.link.core.IoContext;
 import com.robert.link.impl.IoSelectorProvider;
@@ -26,6 +27,10 @@ public class Server {
         }
 
         UDPProvider.start();
+
+        FooGui gui = new FooGui("Clink_Server", tcpServer::getStatusString);
+        gui.doShow();
+
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
         String line = null;
         do {
@@ -38,6 +43,7 @@ public class Server {
             }
         } while (!"00bye00".equalsIgnoreCase(line));
 
+        gui.doDismiss();
         UDPProvider.stop();
         tcpServer.stop();
         IoContext.close();
