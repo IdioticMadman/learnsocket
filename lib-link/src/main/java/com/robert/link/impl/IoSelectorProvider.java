@@ -61,14 +61,14 @@ public class IoSelectorProvider implements IoProvider {
     }
 
     @Override
-    public boolean registerInput(SocketChannel channel, HandlerInputCallback inputCallback) {
+    public boolean registerInput(SocketChannel channel, HandleProviderCallback inputCallback) {
 
         return registerSelection(channel, readSelector, SelectionKey.OP_READ,
                 inRegInput, inputCallbackMap, inputCallback) != null;
     }
 
     @Override
-    public boolean registerOutput(SocketChannel channel, HandlerOutputCallback outputCallback) {
+    public boolean registerOutput(SocketChannel channel, HandleProviderCallback outputCallback) {
 
         return registerSelection(channel, writeSelector, SelectionKey.OP_WRITE,
                 inRegOutput, outputCallbackMap, outputCallback) != null;

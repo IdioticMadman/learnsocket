@@ -26,7 +26,7 @@ public class ClientTest {
         if (serverInfo == null) return;
         PrintUtil.println("ServerInfo:" + serverInfo.toString());
         List<TcpClient> clients = new ArrayList<>();
-        for (int i = 0; i < 200; i++) {
+        for (int i = 0; i < 100; i++) {
             TcpClient tcpClient = TcpClient.startConnect(serverInfo, cachePath);
 
             if (tcpClient == null) {
@@ -50,7 +50,7 @@ public class ClientTest {
                     client.send("Hello~~~");
                 }
                 try {
-                    Thread.sleep(1500);
+                    Thread.sleep(1000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }

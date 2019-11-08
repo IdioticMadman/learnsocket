@@ -62,7 +62,10 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher,
 
     @Override
     public IoArgs provideIoArgs() {
-        return packetWriter.takeIoArgs();
+        IoArgs ioArgs = packetWriter.takeIoArgs();
+        //ioArgs准备接收数据
+        ioArgs.startWriting();
+        return ioArgs;
     }
 
     @Override
@@ -74,6 +77,8 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher,
     public void onConsumeComplete(IoArgs ioArgs) {
         //有数据到达，但是已被关闭
         if (isClosed.get()) return;
+        //ioArgs接收完数据
+        ioArgs.finishWriting();
         //接收到数据包解析数据
         do {
             packetWriter.consumeIoArgs(ioArgs);

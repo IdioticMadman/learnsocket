@@ -44,13 +44,18 @@ public class TcpClient extends Connector {
          */
     }
 
-    public static TcpClient startConnect(ServerInfo serverInfo, File cachePath) throws IOException {
-        SocketChannel socketChannel = SocketChannel.open();
-        socketChannel.connect(new InetSocketAddress(serverInfo.getAddress(), serverInfo.getPort()));
-        PrintUtil.println("已发起服务器连接，并进入后续程序");
-        PrintUtil.println("客户端信息： " + socketChannel.getLocalAddress());
-        PrintUtil.println("服务端信息：" + socketChannel.getRemoteAddress());
-        return new TcpClient(socketChannel, cachePath);
+    public static TcpClient startConnect(ServerInfo serverInfo, File cachePath) {
+        try {
+            SocketChannel socketChannel = SocketChannel.open();
+            socketChannel.connect(new InetSocketAddress(serverInfo.getAddress(), serverInfo.getPort()));
+            PrintUtil.println("已发起服务器连接，并进入后续程序");
+            PrintUtil.println("客户端信息： " + socketChannel.getLocalAddress());
+            PrintUtil.println("服务端信息：" + socketChannel.getRemoteAddress());
+            return new TcpClient(socketChannel, cachePath);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
 
