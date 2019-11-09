@@ -21,23 +21,9 @@ public abstract class ConnectorHandlerChain<Model> {
     }
 
     /**
-     * 处理这个model
-     */
-    synchronized boolean handle(ClientHandler handler, Model model) {
-        ConnectorHandlerChain<Model> next = this.next;
-        if (consume(handler, model)) {
-            return true;
-        }
-        if (next != null) {
-            return next.handle(handler, model);
-        }
-        return againConsume(handler, model);
-    }
-
-    /**
      * 移除队列中的节点
      */
-    boolean remove(Class<? extends ConnectorHandlerChain<Model>> clazz) {
+    public boolean remove(Class<? extends ConnectorHandlerChain<Model>> clazz) {
         if (this.getClass() == clazz) {
             return false;
         }
@@ -53,6 +39,21 @@ public abstract class ConnectorHandlerChain<Model> {
         }
     }
 
+
+    /**
+     * 处理这个model
+     */
+    synchronized boolean handle(ClientHandler handler, Model model) {
+        ConnectorHandlerChain<Model> next = this.next;
+        if (consume(handler, model)) {
+            return true;
+        }
+        if (next != null) {
+            return next.handle(handler, model);
+        }
+        return consumeAgain(handler, model);
+    }
+
     /**
      * 是否处理这个model
      */
@@ -61,7 +62,7 @@ public abstract class ConnectorHandlerChain<Model> {
     /**
      * 如果后面的节点不处理，当前节点是否再次处理
      */
-    protected boolean againConsume(ClientHandler handler, Model model) {
+    protected boolean consumeAgain(ClientHandler handler, Model model) {
         return false;
     }
 }

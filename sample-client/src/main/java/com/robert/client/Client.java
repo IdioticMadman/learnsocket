@@ -1,5 +1,7 @@
 package com.robert.client;
 
+import com.robert.Commands;
+import com.robert.Constants;
 import com.robert.client.bean.ServerInfo;
 import com.robert.link.box.FileSendPacket;
 import com.robert.link.core.IoContext;
@@ -46,7 +48,7 @@ public class Client {
             try {
                 String line = reader.readLine();
                 if (line == null) continue;
-                if ("00bye00".equalsIgnoreCase(line)) break;
+                if (Constants.COMMAND_EXIT.equalsIgnoreCase(line)) break;
                 if (line.startsWith("--f")) {
                     String[] args = line.split(" ");
                     if (args.length >= 2) {

@@ -7,6 +7,7 @@ import com.robert.link.box.StringSendPacket;
 import com.robert.link.impl.SocketChannelAdapter;
 import com.robert.link.impl.async.AsyncReceiverDispatcher;
 import com.robert.link.impl.async.AsyncSenderDispatcher;
+import com.robert.util.CloseUtils;
 import com.robert.util.PrintUtil;
 
 import java.io.Closeable;
@@ -20,7 +21,7 @@ import java.util.UUID;
  */
 public abstract class Connector implements Closeable, SocketChannelAdapter.onChannelStatusChangedListener {
 
-    protected String key = UUID.randomUUID().toString();
+    protected UUID key = UUID.randomUUID();
     private SocketChannel channel;
     private SenderDispatcher senderDispatcher;
     private ReceiverDispatcher receiverDispatcher;
@@ -86,7 +87,7 @@ public abstract class Connector implements Closeable, SocketChannelAdapter.onCha
     }
 
     public void onReceivePacket(ReceivePacket packet) {
-        PrintUtil.println("key:%s, 接受到新的packet，Type: %d, length: %d", key, packet.type(), packet.length());
+//        PrintUtil.println("key:%s, 接受到新的packet，Type: %d, length: %d", key.toString(), packet.type(), packet.length());
     }
 
     @Override
@@ -99,6 +100,10 @@ public abstract class Connector implements Closeable, SocketChannelAdapter.onCha
 
     @Override
     public void onChannelClose(SocketChannel channel) {
+        CloseUtils.close(this);
+    }
 
+    public UUID getKey() {
+        return key;
     }
 }

@@ -1,6 +1,12 @@
 package com.robert.server;
 
+import com.robert.Commands;
+import com.robert.Constants;
+import com.robert.link.box.StringReceivePacket;
+import com.robert.link.core.Connector;
 import com.robert.server.handler.ClientHandler;
+import com.robert.server.handler.ConnectorCloseChain;
+import com.robert.server.handler.ConnectorStringPacketChain;
 import com.robert.util.CloseUtils;
 import com.robert.util.PrintUtil;
 
@@ -9,11 +15,13 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class TcpServer implements ClientHandler.ClientHandlerCallback, ServerAcceptor.AcceptListener {
+public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMessageAdapter {
 
     /**
      * tcp服务的端口
@@ -30,21 +38,28 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback, ServerAcc
     /**
      * 客户端处理器
      */
-    private List<ClientHandler> clientHandlers = new ArrayList<>();
+    private final List<ClientHandler> clientHandlers = new ArrayList<>();
+
+    private final Map<String, Group> groupMap = new HashMap<>();
+
+    /**
+     * 统计发送和接收数据
+     */
+    private ServerStatistics serverStatistics = new ServerStatistics();
 
     /**
      * 客户端转发消息服务
      */
-    private ExecutorService forwardingThreadPoolExecutor;
+    private ExecutorService deliveryPool;
 
     private ServerSocketChannel serverSocket;
-    private long sendSize;
-    private long receiveSize;
+
 
     public TcpServer(int port, File cacheDir) {
         this.port = port;
-        this.forwardingThreadPoolExecutor = Executors.newSingleThreadExecutor();
+        this.deliveryPool = Executors.newSingleThreadExecutor();
         this.cacheDir = cacheDir;
+        this.groupMap.put(Constants.COMMAND_GROUP_NAME, new Group(Constants.COMMAND_GROUP_NAME, this));
     }
 
     /**
@@ -65,9 +80,16 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback, ServerAcc
 
             this.serverSocket = serverSocket;
             this.acceptor = serverAcceptor;
-            PrintUtil.println("服务器信息：%s", serverSocket.getLocalAddress().toString());
             serverAcceptor.start();
-            return true;
+
+            if (serverAcceptor.awaitRunning()) {
+                PrintUtil.println("服务器准备就绪~");
+                PrintUtil.println("服务器信息：%s", serverSocket.getLocalAddress().toString());
+                return true;
+            } else {
+                PrintUtil.println("启动异常!");
+                return false;
+            }
         } catch (IOException e) {
             //开启失败，
             e.printStackTrace();
@@ -83,16 +105,15 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback, ServerAcc
         if (acceptor != null) {
             acceptor.exit();
         }
-
-        CloseUtils.close(serverSocket);
-
-        synchronized (TcpServer.this) {
+        synchronized (clientHandlers) {
             for (ClientHandler clientHandler : clientHandlers) {
                 clientHandler.exit();
             }
             clientHandlers.clear();
         }
-        forwardingThreadPoolExecutor.shutdownNow();
+        CloseUtils.close(serverSocket);
+
+        deliveryPool.shutdownNow();
     }
 
     /**
@@ -100,46 +121,42 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback, ServerAcc
      *
      * @param message 消息
      */
-    public synchronized void broadcast(String message) {
-        for (ClientHandler clientHandler : clientHandlers) {
-            clientHandler.send(message);
-        }
-        sendSize += clientHandlers.size();
-    }
-
-    @Override
-    public synchronized void onSelfClosed(ClientHandler handler) {
-        clientHandlers.remove(handler);
-    }
-
-    @Override
-    public void onMessageArrived(final ClientHandler handler, String msg) {
-        receiveSize++;
-        // 打印到屏幕
-        forwardingThreadPoolExecutor.execute(() -> {
-            synchronized (TcpServer.this) {
-                for (ClientHandler clientHandler : clientHandlers) {
-                    if (clientHandler != handler) {
-                        clientHandler.send(msg);
-                        sendSize++;
-                    }
-                }
+    public void broadcast(String message) {
+        message = "系统通知：" + message;
+        synchronized (clientHandlers) {
+            for (ClientHandler clientHandler : clientHandlers) {
+                sendMessageToTarget(clientHandler, message);
             }
-        });
+        }
     }
+
+    @Override
+    public void sendMessageToTarget(ClientHandler clientHandler, String message) {
+        clientHandler.send(message);
+        serverStatistics.sendSize++;
+    }
+
 
     public Object[] getStatusString() {
         return new String[]{
                 "客户端数量：" + clientHandlers.size(),
-                "发送数量：" + sendSize,
-                "接收数量" + receiveSize,
+                "发送数量：" + serverStatistics.sendSize,
+                "接收数量" + serverStatistics.receiveSize,
         };
     }
 
     @Override
     public void onNewSocketArrived(SocketChannel channel) {
         try {
-            ClientHandler clientHandler = new ClientHandler(channel, this, cacheDir);
+            ClientHandler clientHandler = new ClientHandler(channel, cacheDir, deliveryPool);
+
+            clientHandler.getStringPacketChain()
+                    .appendLast(serverStatistics.statisticsChain())
+                    .appendLast(new ParseCommandConnectorStringPacketChain());
+
+            clientHandler.getCloseChain()
+                    .appendLast(new RemoveQueueOnConnectorClosedChain());
+
             PrintUtil.println(clientHandler.getClientInfo() + ": connected");
             synchronized (TcpServer.this) {
                 clientHandlers.add(clientHandler);
@@ -148,6 +165,50 @@ public class TcpServer implements ClientHandler.ClientHandlerCallback, ServerAcc
         } catch (IOException e) {
             e.printStackTrace();
             PrintUtil.println("客户端链接异常" + e.getMessage());
+        }
+    }
+
+
+    private class RemoveQueueOnConnectorClosedChain extends ConnectorCloseChain {
+        @Override
+        protected boolean consume(ClientHandler handler, Connector connector) {
+            synchronized (clientHandlers) {
+                clientHandlers.remove(handler);
+                //移出群聊
+                Group group = groupMap.get(Constants.COMMAND_GROUP_NAME);
+                if (group != null) {
+                    group.removeMember(handler);
+                }
+            }
+            return true;
+        }
+    }
+
+    private class ParseCommandConnectorStringPacketChain extends ConnectorStringPacketChain {
+
+        @Override
+        protected boolean consume(ClientHandler handler, StringReceivePacket stringReceivePacket) {
+            String entity = stringReceivePacket.entity();
+            if (entity.startsWith(Commands.COMMAND_GROUP_JOIN)) {
+                Group group = groupMap.get(Constants.COMMAND_GROUP_NAME);
+                if (group.addMember(handler)) {
+                    sendMessageToTarget(handler, "Join Group: " + group.getName());
+                }
+                return true;
+            } else if (entity.startsWith(Commands.COMMAND_GROUP_LEAVE)) {
+                Group group = groupMap.get(Constants.COMMAND_GROUP_NAME);
+                if (group.removeMember(handler)) {
+                    sendMessageToTarget(handler, "Leave Group: " + group.getName());
+                }
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        protected boolean consumeAgain(ClientHandler handler, StringReceivePacket stringReceivePacket) {
+            sendMessageToTarget(handler, stringReceivePacket.entity());
+            return true;
         }
     }
 }

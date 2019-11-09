@@ -1,5 +1,6 @@
 package com.robert.server.handler;
 
+import com.robert.link.box.StringReceivePacket;
 import com.robert.link.core.Connector;
 import com.robert.link.core.Packet;
 import com.robert.link.core.ReceivePacket;
@@ -9,25 +10,26 @@ import com.robert.util.PrintUtil;
 
 import java.io.*;
 import java.nio.channels.SocketChannel;
+import java.util.concurrent.Executor;
 
 public class ClientHandler extends Connector {
 
-    private final ClientHandlerCallback clientHandlerCallback;
     private final String clientInfo;
     private final File cacheDir;
+    private final ConnectorCloseChain closeChain = new DefaultPrintConnectorCloseChain();
+    private final ConnectorStringPacketChain stringPacketChain = new DefaultNonConnectorStringPacket();
+    private final Executor handlePool;
 
     /**
-     * @param socket                客户端连接的socket
-     * @param clientHandlerCallback 当前客户端的回调
-     * @param cacheDir
+     * @param socket   客户端连接的socket
+     * @param cacheDir 文件缓存文件夹
      * @throws IOException 操作异常
      */
-    public ClientHandler(SocketChannel socket, ClientHandlerCallback clientHandlerCallback, File cacheDir) throws IOException {
-        this.clientHandlerCallback = clientHandlerCallback;
+    public ClientHandler(SocketChannel socket, File cacheDir, Executor handlePool) throws IOException {
         this.clientInfo = socket.getRemoteAddress().toString();
         this.cacheDir = cacheDir;
+        this.handlePool = handlePool;
         this.setUp(socket);
-        PrintUtil.println("新客户端连接：" + clientInfo);
     }
 
     public String getClientInfo() {
@@ -37,7 +39,7 @@ public class ClientHandler extends Connector {
     @Override
     public void onChannelClose(SocketChannel channel) {
         super.onChannelClose(channel);
-        exitBySelf();
+        closeChain.handle(this, this);
     }
 
     @Override
@@ -48,25 +50,18 @@ public class ClientHandler extends Connector {
     @Override
     public void onReceivePacket(ReceivePacket packet) {
         super.onReceivePacket(packet);
-        if (packet.type() == Packet.TYPE_MEMORY_STRING) {
-            String message = (String) packet.entity();
-//            PrintUtil.println("收到消息：%s : %s", key, message);
-            clientHandlerCallback.onMessageArrived(this, message);
+        switch (packet.type()) {
+            case Packet.TYPE_MEMORY_STRING:
+                deliveryStringPacket((StringReceivePacket) packet);
+                break;
+            default:
+                PrintUtil.println("new Packet: " + packet.length() + "-" + packet.type());
         }
     }
 
-    /**
-     * 异常退出
-     */
-    private void exitBySelf() {
-        exit();
-        clientHandlerCallback.onSelfClosed(this);
-    }
-
-    public interface ClientHandlerCallback {
-        void onSelfClosed(ClientHandler handler);
-
-        void onMessageArrived(ClientHandler handler, String msg);
+    //转发接受到的信息
+    private void deliveryStringPacket(StringReceivePacket packet) {
+        handlePool.execute(() -> stringPacketChain.handle(this, packet));
     }
 
     /**
@@ -74,8 +69,14 @@ public class ClientHandler extends Connector {
      */
     public void exit() {
         CloseUtils.close(this);
-        PrintUtil.println("客户端已退出：" + clientInfo);
+        closeChain.handle(this, this);
     }
 
+    public ConnectorStringPacketChain getStringPacketChain() {
+        return stringPacketChain;
+    }
 
+    public ConnectorCloseChain getCloseChain() {
+        return closeChain;
+    }
 }

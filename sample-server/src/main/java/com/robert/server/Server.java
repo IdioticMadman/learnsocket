@@ -1,5 +1,7 @@
 package com.robert.server;
 
+import com.robert.Commands;
+import com.robert.Constants;
 import com.robert.FooGui;
 import com.robert.common.TCPConstants;
 import com.robert.link.core.IoContext;
@@ -41,7 +43,7 @@ public class Server {
             } catch (IOException e) {
                 e.printStackTrace();
             }
-        } while (!"00bye00".equalsIgnoreCase(line));
+        } while (!Constants.COMMAND_EXIT.equalsIgnoreCase(line));
 
         gui.doDismiss();
         UDPProvider.stop();
