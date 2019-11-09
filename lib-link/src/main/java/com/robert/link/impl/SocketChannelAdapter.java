@@ -21,6 +21,8 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
     private IoArgs.IoArgsEventProcessor receiveEventProcessor;
     private IoArgs.IoArgsEventProcessor sendEventProcessor;
 
+    private volatile long lastReadTime = System.currentTimeMillis();
+    private volatile long lastWriteTime = System.currentTimeMillis();
 
     //当可以接收数据回调
     private IoProvider.HandleProviderCallback inputCallback = new IoProvider.HandleProviderCallback() {
@@ -30,6 +32,9 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
             if (isClose.get()) {
                 return;
             }
+
+            lastReadTime = System.currentTimeMillis();
+
             IoArgs.IoArgsEventProcessor processor = SocketChannelAdapter.this.receiveEventProcessor;
             if (ioArgs == null) {
                 ioArgs = processor.provideIoArgs();
@@ -67,6 +72,8 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
             if (isClose.get()) {
                 return;
             }
+
+            lastWriteTime = System.currentTimeMillis();
             IoArgs.IoArgsEventProcessor processor = SocketChannelAdapter.this.sendEventProcessor;
 
             if (ioArgs == null) {
@@ -122,6 +129,11 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
     }
 
     @Override
+    public long getLastReadTime() {
+        return lastReadTime;
+    }
+
+    @Override
     public void setSenderEventProcessor(IoArgs.IoArgsEventProcessor processor) {
         this.sendEventProcessor = processor;
     }
@@ -133,6 +145,11 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
         }
         inputCallback.checkAttachNull();
         return ioProvider.registerOutput(channel, outputCallback);
+    }
+
+    @Override
+    public long getLastWriteTime() {
+        return lastWriteTime;
     }
 
 

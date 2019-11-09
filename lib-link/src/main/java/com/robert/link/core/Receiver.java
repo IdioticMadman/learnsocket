@@ -21,4 +21,9 @@ public interface Receiver extends Closeable {
      * @throws IOException
      */
     boolean postReceiverAsync() throws IOException;
+
+    /**
+     * 上一次读取到数据的时间
+     */
+    long getLastReadTime();
 }

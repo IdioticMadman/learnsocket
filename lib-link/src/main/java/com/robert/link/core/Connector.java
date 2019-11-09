@@ -90,6 +90,10 @@ public abstract class Connector implements Closeable, SocketChannelAdapter.onCha
 //        PrintUtil.println("key:%s, 接受到新的packet，Type: %d, length: %d", key.toString(), packet.type(), packet.length());
     }
 
+    public long getLastActiveTime(){
+        return Math.max(sender.getLastWriteTime(), receiver.getLastReadTime());
+    }
+
     @Override
     public void close() throws IOException {
         this.receiverDispatcher.close();

@@ -21,4 +21,9 @@ public interface Sender extends Closeable {
      * @throws IOException IO操作异常
      */
     boolean postSendAsync() throws IOException;
+
+    /**
+     * 获取上一次写入数据的时间
+     */
+    long getLastWriteTime();
 }
