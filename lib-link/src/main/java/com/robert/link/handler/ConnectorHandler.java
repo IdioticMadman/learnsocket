@@ -1,34 +1,29 @@
-package com.robert.server.handler;
+package com.robert.link.handler;
 
 import com.robert.link.box.StringReceivePacket;
-import com.robert.link.core.Connector;
-import com.robert.link.core.Packet;
-import com.robert.link.core.ReceivePacket;
+import com.robert.link.core.*;
 import com.robert.util.CloseUtils;
 import com.robert.util.FileUtils;
 import com.robert.util.PrintUtil;
 
 import java.io.*;
 import java.nio.channels.SocketChannel;
-import java.util.concurrent.Executor;
 
-public class ClientHandler extends Connector {
+public class ConnectorHandler extends Connector {
 
     private final String clientInfo;
     private final File cacheDir;
     private final ConnectorCloseChain closeChain = new DefaultPrintConnectorCloseChain();
     private final ConnectorStringPacketChain stringPacketChain = new DefaultNonConnectorStringPacket();
-    private final Executor handlePool;
 
     /**
      * @param socket   客户端连接的socket
      * @param cacheDir 文件缓存文件夹
      * @throws IOException 操作异常
      */
-    public ClientHandler(SocketChannel socket, File cacheDir, Executor handlePool) throws IOException {
+    public ConnectorHandler(SocketChannel socket, File cacheDir) throws IOException {
         this.clientInfo = socket.getRemoteAddress().toString();
         this.cacheDir = cacheDir;
-        this.handlePool = handlePool;
         this.setUp(socket);
     }
 
@@ -61,7 +56,8 @@ public class ClientHandler extends Connector {
 
     //转发接受到的信息
     private void deliveryStringPacket(StringReceivePacket packet) {
-        handlePool.execute(() -> stringPacketChain.handle(this, packet));
+        Scheduler scheduler = IoContext.get().getScheduler();
+        scheduler.delivery(() -> stringPacketChain.handle(this, packet));
     }
 
     /**
@@ -69,7 +65,6 @@ public class ClientHandler extends Connector {
      */
     public void exit() {
         CloseUtils.close(this);
-        closeChain.handle(this, this);
     }
 
     public ConnectorStringPacketChain getStringPacketChain() {

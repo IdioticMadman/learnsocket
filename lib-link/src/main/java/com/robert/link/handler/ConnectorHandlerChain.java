@@ -1,4 +1,4 @@
-package com.robert.server.handler;
+package com.robert.link.handler;
 
 public abstract class ConnectorHandlerChain<Model> {
 
@@ -43,7 +43,7 @@ public abstract class ConnectorHandlerChain<Model> {
     /**
      * 处理这个model
      */
-    synchronized boolean handle(ClientHandler handler, Model model) {
+    synchronized boolean handle(ConnectorHandler handler, Model model) {
         ConnectorHandlerChain<Model> next = this.next;
         if (consume(handler, model)) {
             return true;
@@ -57,12 +57,12 @@ public abstract class ConnectorHandlerChain<Model> {
     /**
      * 是否处理这个model
      */
-    protected abstract boolean consume(ClientHandler handler, Model model);
+    protected abstract boolean consume(ConnectorHandler handler, Model model);
 
     /**
      * 如果后面的节点不处理，当前节点是否再次处理
      */
-    protected boolean consumeAgain(ClientHandler handler, Model model) {
+    protected boolean consumeAgain(ConnectorHandler handler, Model model) {
         return false;
     }
 }

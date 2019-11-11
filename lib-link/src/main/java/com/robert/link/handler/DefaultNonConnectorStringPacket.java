@@ -1,4 +1,4 @@
-package com.robert.server.handler;
+package com.robert.link.handler;
 
 import com.robert.link.box.StringReceivePacket;
 
@@ -8,7 +8,7 @@ import com.robert.link.box.StringReceivePacket;
 public class DefaultNonConnectorStringPacket extends ConnectorStringPacketChain {
 
     @Override
-    protected boolean consume(ClientHandler handler, StringReceivePacket stringReceivePacket) {
+    protected boolean consume(ConnectorHandler handler, StringReceivePacket stringReceivePacket) {
         return false;
     }
 }

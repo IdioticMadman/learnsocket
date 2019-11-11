@@ -7,4 +7,6 @@ import java.util.concurrent.TimeUnit;
 public interface Scheduler extends Closeable {
 
     ScheduledFuture<?> schedule(Runnable runnable, long delay, TimeUnit timeUnit);
+
+    void delivery(Runnable runnable);
 }

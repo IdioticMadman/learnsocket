@@ -6,9 +6,9 @@ import com.robert.link.box.StringReceivePacket;
 import com.robert.link.core.Connector;
 import com.robert.link.core.ScheduleJob;
 import com.robert.link.core.schedule.IdleTimeoutSchedule;
-import com.robert.server.handler.ClientHandler;
-import com.robert.server.handler.ConnectorCloseChain;
-import com.robert.server.handler.ConnectorStringPacketChain;
+import com.robert.link.handler.ConnectorHandler;
+import com.robert.link.handler.ConnectorCloseChain;
+import com.robert.link.handler.ConnectorStringPacketChain;
 import com.robert.util.CloseUtils;
 import com.robert.util.PrintUtil;
 
@@ -41,7 +41,7 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
     /**
      * 客户端处理器
      */
-    private final List<ClientHandler> clientHandlers = new ArrayList<>();
+    private final List<ConnectorHandler> connectorHandlers = new ArrayList<>();
 
     private final Map<String, Group> groupMap = new HashMap<>();
 
@@ -108,13 +108,13 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
         if (acceptor != null) {
             acceptor.exit();
         }
-        ClientHandler[] clientHandlerList;
-        synchronized (clientHandlers) {
-            clientHandlerList = clientHandlers.toArray(new ClientHandler[0]);
-            clientHandlers.clear();
+        ConnectorHandler[] connectorHandlerList;
+        synchronized (connectorHandlers) {
+            connectorHandlerList = connectorHandlers.toArray(new ConnectorHandler[0]);
+            connectorHandlers.clear();
         }
-        for (ClientHandler clientHandler : clientHandlerList) {
-            clientHandler.exit();
+        for (ConnectorHandler connectorHandler : connectorHandlerList) {
+            connectorHandler.exit();
         }
         CloseUtils.close(serverSocket);
 
@@ -128,25 +128,25 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
      */
     public void broadcast(String message) {
         message = "系统通知：" + message;
-        ClientHandler[] clientHandlerList;
-        synchronized (clientHandlers) {
-            clientHandlerList = clientHandlers.toArray(new ClientHandler[0]);
+        ConnectorHandler[] connectorHandlerList;
+        synchronized (connectorHandlers) {
+            connectorHandlerList = connectorHandlers.toArray(new ConnectorHandler[0]);
         }
-        for (ClientHandler clientHandler : clientHandlerList) {
-            sendMessageToTarget(clientHandler, message);
+        for (ConnectorHandler connectorHandler : connectorHandlerList) {
+            sendMessageToTarget(connectorHandler, message);
         }
     }
 
     @Override
-    public void sendMessageToTarget(ClientHandler clientHandler, String message) {
-        clientHandler.send(message);
+    public void sendMessageToTarget(ConnectorHandler connectorHandler, String message) {
+        connectorHandler.send(message);
         serverStatistics.sendSize++;
     }
 
 
     public Object[] getStatusString() {
         return new String[]{
-                "客户端数量：" + clientHandlers.size(),
+                "客户端数量：" + connectorHandlers.size(),
                 "发送数量：" + serverStatistics.sendSize,
                 "接收数量" + serverStatistics.receiveSize,
         };
@@ -155,23 +155,23 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
     @Override
     public void onNewSocketArrived(SocketChannel channel) {
         try {
-            ClientHandler clientHandler = new ClientHandler(channel, cacheDir, deliveryPool);
+            ConnectorHandler connectorHandler = new ConnectorHandler(channel, cacheDir);
 
-            clientHandler.getStringPacketChain()
+            connectorHandler.getStringPacketChain()
                     .appendLast(serverStatistics.statisticsChain())
                     .appendLast(new ParseCommandConnectorStringPacketChain());
 
-            clientHandler.getCloseChain()
+            connectorHandler.getCloseChain()
                     .appendLast(new RemoveQueueOnConnectorClosedChain());
 
-            ScheduleJob scheduleJob = new IdleTimeoutSchedule(5, TimeUnit.SECONDS, clientHandler);
-            clientHandler.schedule(scheduleJob);
+            ScheduleJob scheduleJob = new IdleTimeoutSchedule(5, TimeUnit.SECONDS, connectorHandler);
+            connectorHandler.schedule(scheduleJob);
 
-            PrintUtil.println(clientHandler.getClientInfo() + ": connected");
+            PrintUtil.println(connectorHandler.getClientInfo() + ": connected");
 
             synchronized (TcpServer.this) {
-                clientHandlers.add(clientHandler);
-                System.out.println("当前客户端的数量：" + clientHandlers.size());
+                connectorHandlers.add(connectorHandler);
+                System.out.println("当前客户端的数量：" + connectorHandlers.size());
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -182,9 +182,9 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
 
     private class RemoveQueueOnConnectorClosedChain extends ConnectorCloseChain {
         @Override
-        protected boolean consume(ClientHandler handler, Connector connector) {
-            synchronized (clientHandlers) {
-                clientHandlers.remove(handler);
+        protected boolean consume(ConnectorHandler handler, Connector connector) {
+            synchronized (connectorHandlers) {
+                connectorHandlers.remove(handler);
                 //移出群聊
                 Group group = groupMap.get(Constants.COMMAND_GROUP_NAME);
                 if (group != null) {
@@ -198,7 +198,7 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
     private class ParseCommandConnectorStringPacketChain extends ConnectorStringPacketChain {
 
         @Override
-        protected boolean consume(ClientHandler handler, StringReceivePacket stringReceivePacket) {
+        protected boolean consume(ConnectorHandler handler, StringReceivePacket stringReceivePacket) {
             String entity = stringReceivePacket.entity();
             if (entity.startsWith(Commands.COMMAND_GROUP_JOIN)) {
                 Group group = groupMap.get(Constants.COMMAND_GROUP_NAME);
@@ -217,7 +217,7 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
         }
 
         @Override
-        protected boolean consumeAgain(ClientHandler handler, StringReceivePacket stringReceivePacket) {
+        protected boolean consumeAgain(ConnectorHandler handler, StringReceivePacket stringReceivePacket) {
             sendMessageToTarget(handler, stringReceivePacket.entity());
             return true;
         }

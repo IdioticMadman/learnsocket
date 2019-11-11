@@ -1,8 +1,8 @@
 package com.robert.server;
 
 import com.robert.link.box.StringReceivePacket;
-import com.robert.server.handler.ClientHandler;
-import com.robert.server.handler.ConnectorStringPacketChain;
+import com.robert.link.handler.ConnectorHandler;
+import com.robert.link.handler.ConnectorStringPacketChain;
 
 public class ServerStatistics {
 
@@ -15,7 +15,7 @@ public class ServerStatistics {
 
     class StatisticsConnectorStringPacketChain extends ConnectorStringPacketChain {
         @Override
-        protected boolean consume(ClientHandler handler, StringReceivePacket stringReceivePacket) {
+        protected boolean consume(ConnectorHandler handler, StringReceivePacket stringReceivePacket) {
             receiveSize++;
             return false;
         }
