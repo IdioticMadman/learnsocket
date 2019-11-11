@@ -18,6 +18,11 @@ public abstract class AbsSendFrame extends Frame {
         this.bodyRemaining = length;
     }
 
+    public AbsSendFrame(byte[] header) {
+        super(header);
+        bodyRemaining = getBodyLength();
+    }
+
     @Override
     public synchronized boolean handle(IoArgs args) throws IOException {
         try {

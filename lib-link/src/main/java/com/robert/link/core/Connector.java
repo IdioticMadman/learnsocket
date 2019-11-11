@@ -14,6 +14,8 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -28,6 +30,8 @@ public abstract class Connector implements Closeable, SocketChannelAdapter.onCha
 
     private Sender sender;
     private Receiver receiver;
+
+    private final List<ScheduleJob> scheduleJobs = new ArrayList<>(4);
 
     //包体接收回调
     private ReceiverDispatcher.ReceiverPacketCallback receiverPacketCallback = new ReceiverDispatcher.ReceiverPacketCallback() {
@@ -50,6 +54,11 @@ public abstract class Connector implements Closeable, SocketChannelAdapter.onCha
                 default:
                     throw new UnsupportedOperationException("Unsupported packet type:" + type);
             }
+        }
+
+        @Override
+        public void onReceiveHeartbeat() {
+            PrintUtil.println(key.toString() + ": [Heartbeat]");
         }
     };
 
@@ -86,11 +95,31 @@ public abstract class Connector implements Closeable, SocketChannelAdapter.onCha
         senderDispatcher.send(sendPacket);
     }
 
+    public void schedule(ScheduleJob job) {
+        synchronized (scheduleJobs) {
+            if (scheduleJobs.contains(job)) {
+                return;
+            }
+            job.schedule(IoContext.get().getScheduler());
+            scheduleJobs.add(job);
+        }
+    }
+
+
+    public void fireIdleTimeoutEvent() {
+        senderDispatcher.sendHeartbeat();
+    }
+
+    public void fireExceptionCaught(Throwable throwable) {
+
+    }
+
+
     public void onReceivePacket(ReceivePacket packet) {
 //        PrintUtil.println("key:%s, 接受到新的packet，Type: %d, length: %d", key.toString(), packet.type(), packet.length());
     }
 
-    public long getLastActiveTime(){
+    public long getLastActiveTime() {
         return Math.max(sender.getLastWriteTime(), receiver.getLastReadTime());
     }
 
@@ -104,10 +133,18 @@ public abstract class Connector implements Closeable, SocketChannelAdapter.onCha
 
     @Override
     public void onChannelClose(SocketChannel channel) {
+        synchronized (scheduleJobs) {
+            for (ScheduleJob scheduleJob : scheduleJobs) {
+                scheduleJob.unSchedule();
+            }
+            scheduleJobs.clear();
+        }
         CloseUtils.close(this);
     }
 
     public UUID getKey() {
         return key;
     }
+
+
 }

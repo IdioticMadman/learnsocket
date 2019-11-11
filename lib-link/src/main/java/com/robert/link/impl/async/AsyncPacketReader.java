@@ -4,10 +4,7 @@ import com.robert.link.core.Frame;
 import com.robert.link.core.IoArgs;
 import com.robert.link.core.SendPacket;
 import com.robert.link.core.ds.BytePriorityNode;
-import com.robert.link.frames.AbsSendPacketFrame;
-import com.robert.link.frames.CancelSendFrame;
-import com.robert.link.frames.SendEntityFrame;
-import com.robert.link.frames.SendHeaderFrame;
+import com.robert.link.frames.*;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -198,6 +195,21 @@ public class AsyncPacketReader implements Closeable {
             requestTakePacket();
         }
 
+    }
+
+    /**
+     * 请求发送心跳帧
+     */
+    synchronized boolean requestSendHeartbeatFrame() {
+        //判断当前队列中是否含有心跳包
+        for (BytePriorityNode<Frame> x = node; x != null; x = x.next) {
+            if (x.item().getBodyType() == Frame.TYPE_COMMAND_HEARTBEAT) {
+                return false;
+            }
+        }
+        //添加心跳帧
+        appendNewFrame(new HeartbeatSendFrame());
+        return true;
     }
 
     interface PacketProvider {

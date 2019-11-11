@@ -99,6 +99,17 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
     }
 
     @Override
+    public void sendHeartbeat() {
+        //有数据需要发送，不需要发送心跳包
+        if (!queue.isEmpty()) {
+            return;
+        }
+        if (packetReader.requestSendHeartbeatFrame()) {
+            requestSend();
+        }
+    }
+
+    @Override
     public void close() throws IOException {
         if (isClosed.compareAndSet(false, true)) {
             packetReader.close();
@@ -117,7 +128,7 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
     @Override
     public void onConsumeFailed(IoArgs ioArgs, Exception exception) {
         exception.printStackTrace();
-        synchronized (isSending){
+        synchronized (isSending) {
             isSending.set(false);
         }
         requestSend();
@@ -125,7 +136,7 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
 
     @Override
     public void onConsumeComplete(IoArgs ioArgs) {
-        synchronized (isSending){
+        synchronized (isSending) {
             isSending.set(false);
         }
         requestSend();

@@ -98,4 +98,9 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher,
             packetCallback.onReceiverPacketComplete(receivePacket);
         }
     }
+
+    @Override
+    public void onReceiveHeartbeat() {
+        packetCallback.onReceiveHeartbeat();
+    }
 }

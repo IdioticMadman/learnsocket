@@ -4,6 +4,8 @@ import com.robert.Commands;
 import com.robert.Constants;
 import com.robert.link.box.StringReceivePacket;
 import com.robert.link.core.Connector;
+import com.robert.link.core.ScheduleJob;
+import com.robert.link.core.schedule.IdleTimeoutSchedule;
 import com.robert.server.handler.ClientHandler;
 import com.robert.server.handler.ConnectorCloseChain;
 import com.robert.server.handler.ConnectorStringPacketChain;
@@ -20,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMessageAdapter {
 
@@ -105,11 +108,13 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
         if (acceptor != null) {
             acceptor.exit();
         }
+        ClientHandler[] clientHandlerList;
         synchronized (clientHandlers) {
-            for (ClientHandler clientHandler : clientHandlers) {
-                clientHandler.exit();
-            }
+            clientHandlerList = clientHandlers.toArray(new ClientHandler[0]);
             clientHandlers.clear();
+        }
+        for (ClientHandler clientHandler : clientHandlerList) {
+            clientHandler.exit();
         }
         CloseUtils.close(serverSocket);
 
@@ -123,10 +128,12 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
      */
     public void broadcast(String message) {
         message = "系统通知：" + message;
+        ClientHandler[] clientHandlerList;
         synchronized (clientHandlers) {
-            for (ClientHandler clientHandler : clientHandlers) {
-                sendMessageToTarget(clientHandler, message);
-            }
+            clientHandlerList = clientHandlers.toArray(new ClientHandler[0]);
+        }
+        for (ClientHandler clientHandler : clientHandlerList) {
+            sendMessageToTarget(clientHandler, message);
         }
     }
 
@@ -157,7 +164,11 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
             clientHandler.getCloseChain()
                     .appendLast(new RemoveQueueOnConnectorClosedChain());
 
+            ScheduleJob scheduleJob = new IdleTimeoutSchedule(5, TimeUnit.SECONDS, clientHandler);
+            clientHandler.schedule(scheduleJob);
+
             PrintUtil.println(clientHandler.getClientInfo() + ": connected");
+
             synchronized (TcpServer.this) {
                 clientHandlers.add(clientHandler);
                 System.out.println("当前客户端的数量：" + clientHandlers.size());

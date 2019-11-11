@@ -7,10 +7,12 @@ public class IoContext {
     private static IoContext INSTANCE;
 
     private final IoProvider ioProvider;
+    private final Scheduler scheduler;
 
 
-    public IoContext(IoProvider ioProvider) {
+    public IoContext(IoProvider ioProvider, Scheduler scheduler) {
         this.ioProvider = ioProvider;
+        this.scheduler = scheduler;
     }
 
     public static IoContext get() {
@@ -19,6 +21,10 @@ public class IoContext {
 
     public IoProvider getIoProvider() {
         return ioProvider;
+    }
+
+    public Scheduler getScheduler() {
+        return scheduler;
     }
 
     public static StartBoot setup() {
@@ -33,11 +39,13 @@ public class IoContext {
 
     private void callClose() throws IOException {
         ioProvider.close();
+        scheduler.close();
     }
 
 
     public static class StartBoot {
         private IoProvider ioProvider;
+        private Scheduler scheduler;
 
         private StartBoot() {
         }
@@ -47,8 +55,13 @@ public class IoContext {
             return this;
         }
 
+        public StartBoot scheduler(Scheduler scheduler) {
+            this.scheduler = scheduler;
+            return this;
+        }
+
         public IoContext start() {
-            INSTANCE = new IoContext(ioProvider);
+            INSTANCE = new IoContext(ioProvider, scheduler);
             return INSTANCE;
         }
     }

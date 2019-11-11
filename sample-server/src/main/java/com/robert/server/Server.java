@@ -6,6 +6,7 @@ import com.robert.FooGui;
 import com.robert.common.TCPConstants;
 import com.robert.link.core.IoContext;
 import com.robert.link.impl.IoSelectorProvider;
+import com.robert.link.impl.ScheduleImpl;
 import com.robert.util.FileUtils;
 import com.robert.util.PrintUtil;
 
@@ -20,6 +21,7 @@ public class Server {
         File cacheDir = FileUtils.getCacheDir("server");
         IoContext.setup()
                 .ioProvider(new IoSelectorProvider())
+                .scheduler(new ScheduleImpl(1))
                 .start();
         TcpServer tcpServer = new TcpServer(TCPConstants.PORT_SERVER, cacheDir);
         boolean started = tcpServer.startServer();

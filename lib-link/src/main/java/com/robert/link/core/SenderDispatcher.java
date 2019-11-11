@@ -21,4 +21,5 @@ public interface SenderDispatcher extends Closeable {
      */
     void cancel(SendPacket packet);
 
+    void sendHeartbeat();
 }

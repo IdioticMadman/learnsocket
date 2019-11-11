@@ -6,6 +6,7 @@ import com.robert.client.bean.ServerInfo;
 import com.robert.link.box.FileSendPacket;
 import com.robert.link.core.IoContext;
 import com.robert.link.impl.IoSelectorProvider;
+import com.robert.link.impl.ScheduleImpl;
 import com.robert.util.FileUtils;
 import com.robert.util.PrintUtil;
 
@@ -24,6 +25,7 @@ public class Client {
         if (serverInfo != null) {
             IoContext.setup()
                     .ioProvider(new IoSelectorProvider())
+                    .scheduler(new ScheduleImpl(1))
                     .start();
             TcpClient tcpClient = null;
             try {
