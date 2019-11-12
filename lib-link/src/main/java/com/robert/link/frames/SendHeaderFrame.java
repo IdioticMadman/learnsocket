@@ -10,7 +10,9 @@ import java.io.InputStream;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 
-
+/**
+ * Packet发送头帧，会把当前packet的长度，类型，额外信息
+ */
 public class SendHeaderFrame extends AbsSendPacketFrame {
     static final int PACKET_HEADER_FRAME_MIN_LENGTH = 6;
     private final byte[] body;
@@ -50,8 +52,13 @@ public class SendHeaderFrame extends AbsSendPacketFrame {
     @Override
     public Frame buildNextFrame() {
         SendPacket<?> packet = this.sendPacket;
-        InputStream stream = packet.open();
-        ReadableByteChannel channel = Channels.newChannel(stream);
-        return new SendEntityFrame(getBodyIdentifier(), packet.length(), channel, packet);
+        if (packet.type() == Packet.TYPE_STREAM_DIRECT) {
+            //类型
+            return SendDirectEntityFrame.buildEntityFrame(packet, getBodyIdentifier());
+        } else {
+            InputStream stream = packet.open();
+            ReadableByteChannel channel = Channels.newChannel(stream);
+            return new SendEntityFrame(getBodyIdentifier(), packet.length(), channel, packet);
+        }
     }
 }

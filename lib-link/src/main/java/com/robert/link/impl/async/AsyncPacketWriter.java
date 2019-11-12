@@ -34,7 +34,7 @@ public class AsyncPacketWriter implements Closeable {
         packetMap.clear();
     }
 
-    //有数据传入，需要被写出
+    //有数据传入，需要被写出，一帧一帧来
     synchronized void consumeIoArgs(IoArgs ioArgs) {
         if (tempFrame == null) {
             //当前frame为空，尝试构建一个新的frame
@@ -54,7 +54,7 @@ public class AsyncPacketWriter implements Closeable {
         Frame currentFrame = this.tempFrame;
         do {
             try {
-                //交给frame进行读取
+                //交给frame进行读取数据，读取完一帧，并判断类型，进行后续操作
                 if (currentFrame.handle(ioArgs)) {
                     if (currentFrame instanceof ReceiveHeaderFrame) {
                         ReceiveHeaderFrame headerFrame = (ReceiveHeaderFrame) currentFrame;
@@ -66,6 +66,7 @@ public class AsyncPacketWriter implements Closeable {
                         completeEntityFrame((ReceiveEntityFrame) currentFrame);
                     }
                     this.tempFrame = null;
+                    //接收完一帧，需要中断循环，外层会有判断，如果还有数据，重新进入此方法
                     break;
                 }
             } catch (IOException e) {
@@ -76,7 +77,7 @@ public class AsyncPacketWriter implements Closeable {
     }
 
     /**
-     * 完成接收frame
+     * 完成接收一frame，并判断这个packet是否接收完成
      */
     private void completeEntityFrame(ReceiveEntityFrame frame) {
         short identifier = frame.getBodyIdentifier();
@@ -146,7 +147,12 @@ public class AsyncPacketWriter implements Closeable {
         }
     }
 
-    //准备好一个数据载体，准备接收数据
+    /**
+     * 准备好一个数据载体，准备接收数据
+     * 如果当前frame为空，则表示，我们需要接收frame的头部
+     * 不为空，则表示要填充frame的body
+     * 具体逻辑看看{@link #consumeIoArgs(IoArgs)}
+     */
     synchronized IoArgs takeIoArgs() {
         ioArgs.limit(tempFrame == null ? Frame.FRAME_HEADER_LENGTH :
                 tempFrame.getConsumableLength());

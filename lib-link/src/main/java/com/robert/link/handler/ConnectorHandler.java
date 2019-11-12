@@ -38,7 +38,12 @@ public class ConnectorHandler extends Connector {
     }
 
     @Override
-    protected File createNewReceiveFile() {
+    protected OutputStream createNewReceiveOutputStream(long length, byte[] headerInfo) {
+        return new ByteArrayOutputStream();
+    }
+
+    @Override
+    protected File createNewReceiveFile(long length, byte[] headerInfo) {
         return FileUtils.createRandomTemp(cacheDir);
     }
 

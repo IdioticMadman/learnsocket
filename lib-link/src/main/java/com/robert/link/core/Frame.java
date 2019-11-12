@@ -2,6 +2,9 @@ package com.robert.link.core;
 
 import java.io.IOException;
 
+/**
+ * 基础Frame，封装当前frame的长度。类型，以及标识
+ */
 public abstract class Frame {
 
     //单帧最大容量
@@ -37,7 +40,7 @@ public abstract class Frame {
         if (identifier < 1 || identifier > 255) {
             throw new RuntimeException("！");
         }
-        //设置包体长度
+        //设置frame的长度
         header[0] = (byte) (length >> 8);
         header[1] = (byte) length;
 

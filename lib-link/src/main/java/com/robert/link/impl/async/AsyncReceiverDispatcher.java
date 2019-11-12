@@ -81,14 +81,16 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher,
         ioArgs.finishWriting();
         //接收到数据包解析数据
         do {
+            //此处需要循环处理，内部接收完一帧数据，需重新构建一帧
             packetWriter.consumeIoArgs(ioArgs);
         } while (ioArgs.remained() && !isClosed.get());
+        //继续监听数据到达
         registerReceiver();
     }
 
     @Override
     public ReceivePacket takePacket(byte type, long length, byte[] headerInfo) {
-        return packetCallback.onArrivedNewPacket(type, length);
+        return packetCallback.onArrivedNewPacket(type, length, headerInfo);
     }
 
     @Override
