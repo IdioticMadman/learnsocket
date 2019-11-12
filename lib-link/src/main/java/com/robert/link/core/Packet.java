@@ -9,6 +9,10 @@ import java.io.IOException;
  */
 public abstract class Packet<Stream extends Closeable> implements Closeable {
 
+    //最大packet的长度
+    public static final long MAX_LENGTH = (0xFFL << 32) |
+            (0xFFL << 24) | (0xFFL << 16) | (0xFFL << 8) | (0xFFL);
+
     //流对象
     private Stream stream;
 

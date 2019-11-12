@@ -169,7 +169,7 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
 
             PrintUtil.println(connectorHandler.getClientInfo() + ": connected");
 
-            synchronized (TcpServer.this) {
+            synchronized (connectorHandlers) {
                 connectorHandlers.add(connectorHandler);
                 System.out.println("当前客户端的数量：" + connectorHandlers.size());
             }

@@ -44,7 +44,7 @@ public class Client {
                             return true;
                         }
                     });
-                    tcpClient.schedule(new IdleTimeoutSchedule(10, TimeUnit.SECONDS, tcpClient));
+                    tcpClient.schedule(new IdleTimeoutSchedule(4, TimeUnit.SECONDS, tcpClient));
                     chat(tcpClient);
                 }
 
