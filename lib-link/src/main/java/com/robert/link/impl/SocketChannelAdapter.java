@@ -36,6 +36,11 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
             lastReadTime = System.currentTimeMillis();
 
             IoArgs.IoArgsEventProcessor processor = SocketChannelAdapter.this.receiveEventProcessor;
+
+            if (processor == null) {
+                return;
+            }
+
             if (ioArgs == null) {
                 ioArgs = processor.provideIoArgs();
             }
@@ -47,7 +52,7 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
                     if (count == 0) {
                         PrintUtil.println("read zero data");
                     }
-                    if (ioArgs.remained()) {
+                    if (ioArgs.remained() && ioArgs.isNeedConsumeReaming()) {
                         //channel暂不可以读取
                         setAttach(ioArgs);
                         //重新注册输入
@@ -76,6 +81,10 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
             lastWriteTime = System.currentTimeMillis();
             IoArgs.IoArgsEventProcessor processor = SocketChannelAdapter.this.sendEventProcessor;
 
+            if (processor == null) {
+                return;
+            }
+
             if (ioArgs == null) {
                 //没有暂存数据，获取待发送的数据
                 ioArgs = processor.provideIoArgs();
@@ -88,7 +97,7 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
                     if (count == 0) {
                         PrintUtil.println("write zero data");
                     }
-                    if (ioArgs.remained()) {
+                    if (ioArgs.remained() && ioArgs.isNeedConsumeReaming()) {
                         //目前channel暂不可写，但是还有数据，暂存
                         setAttach(ioArgs);
                         //重新注册输出

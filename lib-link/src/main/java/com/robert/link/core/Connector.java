@@ -4,6 +4,7 @@ import com.robert.link.box.*;
 import com.robert.link.impl.SocketChannelAdapter;
 import com.robert.link.impl.async.AsyncReceiverDispatcher;
 import com.robert.link.impl.async.AsyncSenderDispatcher;
+import com.robert.link.impl.bridge.BridgeSocketDispatcher;
 import com.robert.util.CloseUtils;
 import com.robert.util.PrintUtil;
 
@@ -129,6 +130,50 @@ public abstract class Connector implements Closeable, SocketChannelAdapter.onCha
 
     }
 
+    /**
+     * 改变当前接收调度器为桥接模式
+     */
+    public void changeToBridge() {
+        if (receiverDispatcher instanceof BridgeSocketDispatcher) {
+            //已经改变直接返回
+            return;
+        }
+        //停止之前的
+        receiverDispatcher.stop();
+        BridgeSocketDispatcher dispatcher = new BridgeSocketDispatcher(receiver);
+        receiverDispatcher = dispatcher;
+        dispatcher.start();
+    }
+
+    /**
+     * 将另外一个链接的发送者绑定到当前链接的桥接调度器上实现两个链接的桥接功能
+     */
+    public void bindToBride(Sender sender) {
+        if (sender == this.sender) {
+            throw new UnsupportedOperationException("Can not set current connector sender to self bridge mode");
+        }
+        if (!(receiverDispatcher instanceof BridgeSocketDispatcher)) {
+            throw new IllegalStateException("receiveDispatcher is not BridgeSocketDispatcher");
+        }
+        ((BridgeSocketDispatcher) receiverDispatcher).bindSender(sender);
+    }
+
+    /**
+     * 将之前链接的发送者解除绑定，解除桥接数据发送功能
+     */
+    public void unBindToBridge() {
+        if (!(receiverDispatcher instanceof BridgeSocketDispatcher)) {
+            throw new IllegalStateException("receiveDispatcher is not BridgeSocketDispatcher");
+        }
+        ((BridgeSocketDispatcher) receiverDispatcher).bindSender(null);
+    }
+
+    /**
+     * 获取当前连接的发送者
+     */
+    public Sender getSender() {
+        return sender;
+    }
 
     public void onReceivePacket(ReceivePacket packet) {
 //        PrintUtil.println("key:%s, 接受到新的packet，Type: %d, length: %d", key.toString(), packet.type(), packet.length());

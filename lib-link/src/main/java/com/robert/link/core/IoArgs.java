@@ -11,8 +11,23 @@ import java.nio.channels.WritableByteChannel;
  * 封装byteBuffer的操作
  */
 public class IoArgs {
-    private int limit = 256;
-    private ByteBuffer byteBuffer = ByteBuffer.allocate(256);
+    private final boolean isNeedConsumeReaming;
+    private int limit;
+    private final ByteBuffer byteBuffer;
+
+    public IoArgs() {
+        this(256);
+    }
+
+    public IoArgs(int size) {
+        this(size, true);
+    }
+
+    public IoArgs(int size, boolean isNeedConsumeReaming) {
+        this.limit = size;
+        this.isNeedConsumeReaming = isNeedConsumeReaming;
+        this.byteBuffer = ByteBuffer.allocate(size);
+    }
 
     /**
      * 从数组中读取数据到当前byteBuffer中
@@ -121,15 +136,6 @@ public class IoArgs {
     }
 
     /**
-     * 读取包长度
-     *
-     * @return
-     */
-    public int readLength() {
-        return this.byteBuffer.getInt();
-    }
-
-    /**
      * 开始写入，并指定要写入的数据长度
      */
     public void startWriting() {
@@ -145,12 +151,15 @@ public class IoArgs {
         byteBuffer.flip();
     }
 
+    /**
+     * 获取当前容量
+     */
     public int capacity() {
         return byteBuffer.capacity();
     }
 
     /**
-     * @return 是否还有可写入空间
+     * @return 是否有空间可以读取或者写入
      */
     public boolean remained() {
         return byteBuffer.remaining() > 0;
@@ -176,6 +185,13 @@ public class IoArgs {
         return emptySize;
     }
 
+    public void resetLimit() {
+        this.limit = byteBuffer.capacity();
+    }
+
+    public boolean isNeedConsumeReaming() {
+        return isNeedConsumeReaming;
+    }
 
     /**
      * IoArgs 提供者、处理者

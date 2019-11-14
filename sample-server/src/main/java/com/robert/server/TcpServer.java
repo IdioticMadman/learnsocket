@@ -50,17 +50,11 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
      */
     private ServerStatistics serverStatistics = new ServerStatistics();
 
-    /**
-     * 客户端转发消息服务
-     */
-    private ExecutorService deliveryPool;
-
     private ServerSocketChannel serverSocket;
 
 
     public TcpServer(int port, File cacheDir) {
         this.port = port;
-        this.deliveryPool = Executors.newSingleThreadExecutor();
         this.cacheDir = cacheDir;
         this.groupMap.put(Constants.COMMAND_GROUP_NAME, new Group(Constants.COMMAND_GROUP_NAME, this));
     }
@@ -118,7 +112,6 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
         }
         CloseUtils.close(serverSocket);
 
-        deliveryPool.shutdownNow();
     }
 
     /**
