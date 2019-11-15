@@ -7,17 +7,19 @@ import java.util.List;
 import java.util.Random;
 
 public class AudioRoom {
+    //房间code的长度
+    private static final int ROOM_CODE_LENGTH = 6;
     private final String roomCode;
 
     private ConnectorHandler handler1;
     private ConnectorHandler handler2;
 
-    public AudioRoom(String roomCode) {
-        this.roomCode = roomCode;
+    public AudioRoom() {
+        this.roomCode = getRandomString(ROOM_CODE_LENGTH);
     }
 
     public ConnectorHandler[] getConnectors() {
-        List<ConnectorHandler> handlers = new ArrayList<>();
+        List<ConnectorHandler> handlers = new ArrayList<>(2);
         if (handler1 != null) {
             handlers.add(handler1);
         }

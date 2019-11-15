@@ -9,6 +9,7 @@ import com.robert.link.core.schedule.IdleTimeoutSchedule;
 import com.robert.link.handler.ConnectorHandler;
 import com.robert.link.handler.ConnectorCloseChain;
 import com.robert.link.handler.ConnectorStringPacketChain;
+import com.robert.server.audio.AudioRoom;
 import com.robert.util.CloseUtils;
 import com.robert.util.PrintUtil;
 
@@ -20,8 +21,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMessageAdapter {
@@ -152,9 +151,11 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
 
             connectorHandler.getStringPacketChain()
                     .appendLast(serverStatistics.statisticsChain())
-                    .appendLast(new ParseCommandConnectorStringPacketChain());
+                    .appendLast(new ParseCommandConnectorStringPacketChain())
+                    .appendLast(new ParseAudioStreamCommandStringPacketChain());
 
             connectorHandler.getCloseChain()
+                    .appendLast(new RemoveAudioQueueOnConnectorClosedChain())
                     .appendLast(new RemoveQueueOnConnectorClosedChain());
 
             ScheduleJob scheduleJob = new IdleTimeoutSchedule(5, TimeUnit.SECONDS, connectorHandler);
@@ -166,6 +167,7 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
                 connectorHandlers.add(connectorHandler);
                 System.out.println("当前客户端的数量：" + connectorHandlers.size());
             }
+            sendMessageToTarget(connectorHandler, Commands.COMMAND_INFO_NAME + connectorHandler.getKey().toString());
         } catch (IOException e) {
             e.printStackTrace();
             PrintUtil.println("客户端链接异常" + e.getMessage());
@@ -186,6 +188,180 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
             }
             return true;
         }
+    }
+
+    //单点聊天一些缓存
+    private final Map<ConnectorHandler, ConnectorHandler> audioCmdToStreamMap = new HashMap<>();
+    private final Map<ConnectorHandler, ConnectorHandler> audioStreamToCmdMap = new HashMap<>();
+    private final Map<String, AudioRoom> audioRoomMap = new HashMap<>();
+    private final Map<ConnectorHandler, AudioRoom> audioStreamRoomMap = new HashMap<>();
+
+    private class RemoveAudioQueueOnConnectorClosedChain extends ConnectorCloseChain {
+
+        @Override
+        protected boolean consume(ConnectorHandler handler, Connector connector) {
+            if (audioCmdToStreamMap.containsKey(handler)) {
+                audioCmdToStreamMap.remove(handler);
+            } else if (audioStreamToCmdMap.containsKey(handler)) {
+                audioStreamToCmdMap.remove(handler);
+                dissolveRoom(handler);
+            }
+            return false;
+        }
+    }
+
+    private class ParseAudioStreamCommandStringPacketChain extends ConnectorStringPacketChain {
+
+        @Override
+        protected boolean consume(ConnectorHandler handler, StringReceivePacket stringReceivePacket) {
+            String entity = stringReceivePacket.entity();
+            if (entity.startsWith(Commands.COMMAND_CONNECTOR_BIND)) {
+                //绑定流connector
+                String key = entity.substring(Commands.COMMAND_CONNECTOR_BIND.length());
+                ConnectorHandler audioStreamConnector = findConnectorFromKey(key);
+                if (audioStreamConnector != null) {
+                    audioCmdToStreamMap.put(handler, audioStreamConnector);
+                    audioStreamToCmdMap.put(audioStreamConnector, handler);
+                    audioStreamConnector.changeToBridge();
+                }
+            } else if (entity.startsWith(Commands.COMMAND_AUDIO_CREATE_ROOM)) {
+                //创建房间，并把当前connector加入房间，暂存
+                ConnectorHandler audioStreamConnector = findAudioStreamConnector(handler);
+                if (audioStreamConnector != null) {
+                    //随机创建房间
+                    AudioRoom room = createNewRoom();
+                    //加一个客户端
+                    if (joinRoom(room, audioStreamConnector)) {
+                        //发送创建成功消息
+                        sendMessageToTarget(handler, Commands.COMMAND_INFO_AUDIO_ROOM + room.getRoomCode());
+                    } else {
+                        PrintUtil.println("create then join room failed!");
+                    }
+                }
+            } else if (entity.startsWith(Commands.COMMAND_AUDIO_LEAVE_ROOM)) {
+                //离开房间
+                ConnectorHandler audioStreamConnector = findAudioStreamConnector(handler);
+                if (audioStreamConnector != null) {
+                    //有一人离开，解散该房间，并清空缓存
+                    dissolveRoom(audioStreamConnector);
+                    //发送流关闭命令
+                    sendMessageToTarget(handler, Commands.COMMAND_INFO_AUDIO_STOP);
+                }
+            } else if (entity.startsWith(Commands.COMMAND_AUDIO_JOIN_ROOM)) {
+                //加入一个已有的房间
+                ConnectorHandler audioStreamConnector = findAudioStreamConnector(handler);
+                if (audioStreamConnector != null) {
+                    String roomCode = entity.substring(Commands.COMMAND_AUDIO_JOIN_ROOM.length());
+                    AudioRoom room = audioRoomMap.get(roomCode);
+                    if (room != null && joinRoom(room, audioStreamConnector)) {
+                        //获取room里面另外一个handler
+                        ConnectorHandler otherHandler = room.getTheOtherHandler(audioStreamConnector);
+                        //搭起桥接
+                        otherHandler.bindToBride(audioStreamConnector.getSender());
+                        audioStreamConnector.bindToBride(otherHandler.getSender());
+                        //发送可开始聊天的stream
+                        sendMessageToTarget(handler, Commands.COMMAND_INFO_AUDIO_START);
+                        sendStreamConnectorMessage(handler, Commands.COMMAND_INFO_AUDIO_START);
+                    } else {
+                        //房间没找到，或者加入房间失败
+                        sendMessageToTarget(handler, Commands.COMMAND_INFO_AUDIO_ERROR);
+                    }
+                }
+            } else {
+                return false;
+            }
+            return true;
+        }
+    }
+
+    /**
+     * 解散房间
+     */
+    private void dissolveRoom(ConnectorHandler audioStreamConnector) {
+        AudioRoom room = audioStreamRoomMap.get(audioStreamConnector);
+        if (room == null) {
+            return;
+        }
+        ConnectorHandler[] connectors = room.getConnectors();
+        for (ConnectorHandler connector : connectors) {
+            //解除桥接
+            connector.unBindToBridge();
+            //移除缓存
+            audioStreamRoomMap.remove(connector);
+            if (connector != audioStreamConnector) {
+                //退出房间
+                sendStreamConnectorMessage(connector, Commands.COMMAND_INFO_AUDIO_STOP);
+            }
+        }
+        //销毁房间
+        audioRoomMap.remove(room.getRoomCode());
+    }
+
+    /**
+     * 通过流链接给对应命令控制链接发送信息
+     */
+    private void sendStreamConnectorMessage(ConnectorHandler connector, String command) {
+        if (connector == null) return;
+        ConnectorHandler audioCmdConnector = findAudioCmdConnector(connector);
+        sendMessageToTarget(audioCmdConnector, command);
+    }
+
+    /**
+     * 加入房间
+     */
+    private boolean joinRoom(AudioRoom room, ConnectorHandler audioStreamConnector) {
+        if (room.enterRoom(audioStreamConnector)) {
+            audioStreamRoomMap.put(audioStreamConnector, room);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 创建房间
+     */
+    private AudioRoom createNewRoom() {
+        AudioRoom room;
+        do {
+            room = new AudioRoom();
+        } while (audioRoomMap.containsKey(room.getRoomCode()));
+        audioRoomMap.put(room.getRoomCode(), room);
+        return room;
+    }
+
+
+    /**
+     * 通过音频数据流链接来查找音频控制链接
+     */
+    private ConnectorHandler findAudioCmdConnector(ConnectorHandler handler) {
+        return audioStreamToCmdMap.get(handler);
+    }
+
+    /**
+     * 通过音频命令控制链接寻找数据传输流链接，未找到则发送错误
+     */
+    private ConnectorHandler findAudioStreamConnector(ConnectorHandler handler) {
+        ConnectorHandler connectorHandler = audioCmdToStreamMap.get(handler);
+        if (connectorHandler == null) {
+            sendMessageToTarget(handler, Commands.COMMAND_INFO_AUDIO_ERROR);
+            return null;
+        } else {
+            return connectorHandler;
+        }
+    }
+
+    /**
+     * 通过唯一key查找对应的connector
+     */
+    private ConnectorHandler findConnectorFromKey(String key) {
+        synchronized (connectorHandlers) {
+            for (ConnectorHandler connectorHandler : connectorHandlers) {
+                if (connectorHandler.getKey().toString().equalsIgnoreCase(key)) {
+                    return connectorHandler;
+                }
+            }
+        }
+        return null;
     }
 
     private class ParseCommandConnectorStringPacketChain extends ConnectorStringPacketChain {
