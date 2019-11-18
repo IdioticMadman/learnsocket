@@ -151,14 +151,14 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
 
             connectorHandler.getStringPacketChain()
                     .appendLast(serverStatistics.statisticsChain())
-                    .appendLast(new ParseCommandConnectorStringPacketChain())
-                    .appendLast(new ParseAudioStreamCommandStringPacketChain());
+                    .appendLast(new ParseAudioStreamCommandStringPacketChain())
+                    .appendLast(new ParseCommandConnectorStringPacketChain());
 
             connectorHandler.getCloseChain()
                     .appendLast(new RemoveAudioQueueOnConnectorClosedChain())
                     .appendLast(new RemoveQueueOnConnectorClosedChain());
 
-            ScheduleJob scheduleJob = new IdleTimeoutSchedule(5, TimeUnit.SECONDS, connectorHandler);
+            ScheduleJob scheduleJob = new IdleTimeoutSchedule(120, TimeUnit.SECONDS, connectorHandler);
             connectorHandler.schedule(scheduleJob);
 
             PrintUtil.println(connectorHandler.getClientInfo() + ": connected");

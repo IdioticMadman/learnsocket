@@ -35,10 +35,10 @@ public class IoSelectorProvider implements IoProvider {
         this.writeSelector = Selector.open();
         this.readSelector = Selector.open();
 
-        this.inputHandlePool = Executors.newFixedThreadPool(20,
+        this.inputHandlePool = Executors.newFixedThreadPool(4,
                 new NameableThreadFactory("IoProvider-input-thread"));
 
-        this.outputHandlePool = Executors.newFixedThreadPool(20,
+        this.outputHandlePool = Executors.newFixedThreadPool(4,
                 new NameableThreadFactory("IoProvider-output-thread"));
 
         //开启轮询读写就绪的channel

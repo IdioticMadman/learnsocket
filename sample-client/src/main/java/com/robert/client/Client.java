@@ -35,7 +35,7 @@ public class Client {
                     .start();
             TcpClient tcpClient = null;
             try {
-                tcpClient = TcpClient.startConnect(serverInfo, cachePath);
+                tcpClient = TcpClient.startConnect(serverInfo, cachePath, true);
                 if (tcpClient != null) {
                     tcpClient.getCloseChain().appendLast(new ConnectorCloseChain() {
                         @Override
@@ -44,7 +44,7 @@ public class Client {
                             return true;
                         }
                     });
-                    tcpClient.schedule(new IdleTimeoutSchedule(4, TimeUnit.SECONDS, tcpClient));
+                    tcpClient.schedule(new IdleTimeoutSchedule(60, TimeUnit.SECONDS, tcpClient));
                     chat(tcpClient);
                 }
 

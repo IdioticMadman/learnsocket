@@ -71,9 +71,10 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
                 //请求是否有数据等待发送
                 try {
                     //注册有数据要发送
+                    isSending.set(true);
                     boolean isSucceed = sender.postSendAsync();
-                    if (isSucceed) {
-                        isSending.set(true);
+                    if (!isSucceed) {
+                        isSending.set(false);
                     }
                 } catch (IOException e) {
                     closeAndNotify();

@@ -1,10 +1,14 @@
 package com.robert.client;
 
 import com.robert.client.bean.ServerInfo;
+import com.robert.link.core.Connector;
 import com.robert.link.core.IoContext;
+import com.robert.link.handler.ConnectorCloseChain;
+import com.robert.link.handler.ConnectorHandler;
 import com.robert.link.impl.IoSelectorProvider;
+import com.robert.link.impl.ScheduleImpl;
+import com.robert.util.CloseUtils;
 import com.robert.util.FileUtils;
-import com.robert.util.PrintUtil;
 
 import java.io.File;
 import java.io.IOException;
@@ -12,68 +16,95 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ClientTest {
-    volatile static boolean done = false;
+
+    private static final int CLIENT_SIZE = 2000;
+    private static final int SEND_THREAD_SIZE = 4;
+    private static final int SEND_THREAD_DELAY = 500;
+    private static volatile boolean done;
+
 
     public static void main(String[] args) throws IOException {
-        File cachePath = FileUtils.getCacheDir("client");
+        ServerInfo serverInfo = UDPSearcher.searchServer(3000);
+        if (serverInfo == null) {
+            return;
+        }
+        File cachePath = FileUtils.getCacheDir("client/test");
         IoContext.setup()
                 .ioProvider(new IoSelectorProvider())
+                .scheduler(new ScheduleImpl(1))
                 .start();
 
-        ServerInfo serverInfo =
-                UDPSearcher.searchServer(5000);
+        int size = 0;
+        final List<TcpClient> clients = new ArrayList<>(CLIENT_SIZE);
 
-        if (serverInfo == null) return;
-        PrintUtil.println("ServerInfo:" + serverInfo.toString());
-        List<TcpClient> clients = new ArrayList<>();
-        for (int i = 0; i < 100; i++) {
-            TcpClient tcpClient = TcpClient.startConnect(serverInfo, cachePath);
-
-            if (tcpClient == null) {
-                PrintUtil.println("连接异常");
-                continue;
+        final ConnectorCloseChain closeChain = new ConnectorCloseChain() {
+            @Override
+            protected boolean consume(ConnectorHandler handler, Connector connector) {
+                //noinspection SuspiciousMethodCalls
+                clients.remove(handler);
+                if (clients.size() == 0) {
+                    CloseUtils.close(System.in);
+                }
+                return false;
             }
-            clients.add(tcpClient);
+        };
 
+        for (int i = 0; i < CLIENT_SIZE; i++) {
             try {
-                Thread.sleep(20);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+                TcpClient tcpClient = TcpClient.startConnect(serverInfo, cachePath, false);
+                if (tcpClient == null) {
+                    throw new NullPointerException();
+                }
+                tcpClient.getCloseChain().appendLast(closeChain);
+                clients.add(tcpClient);
+                System.out.println("连接成功：" + (++size));
+            } catch (IOException | NullPointerException e) {
+                System.out.println("连接异常");
+                break;
             }
         }
 
         System.in.read();
 
-        Thread thread = new Thread(() -> {
+        Runnable runnable = () -> {
             while (!done) {
-                for (TcpClient client : clients) {
-                    client.send("Hello~~~");
+                TcpClient[] tcpClients = clients.toArray(new TcpClient[0]);
+                for (TcpClient tcpClient : tcpClients) {
+                    tcpClient.send("Hello~");
                 }
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
+                if (SEND_THREAD_DELAY > 0) {
+                    try {
+                        Thread.sleep(SEND_THREAD_DELAY);
+                    } catch (InterruptedException ignore) {
+
+                    }
                 }
             }
-        });
-        thread.start();
-        while (true) {
+        };
 
+        List<Thread> threads = new ArrayList<>(SEND_THREAD_SIZE);
+        for (int i = 0; i < SEND_THREAD_SIZE; i++) {
+            Thread thread = new Thread(runnable);
+            thread.start();
+            threads.add(thread);
         }
 
-//        PrintUtil.println("done");
-//
-//        done = true;
-//
-//        try {
-//            thread.join();
-//        } catch (InterruptedException e) {
-//            e.printStackTrace();
-//        }
-//
-//        for (TcpClient client : clients) {
-//            client.exit();
-//        }
-//        IoContext.close();
+        System.in.read();
+
+        done = true;
+
+        TcpClient[] tcpClients = clients.toArray(new TcpClient[0]);
+        for (TcpClient tcpClient : tcpClients) {
+            tcpClient.exit();
+        }
+
+        IoContext.close();
+
+        for (Thread thread : threads) {
+            try {
+                thread.interrupt();
+            } catch (Exception ignore) {
+            }
+        }
     }
 }

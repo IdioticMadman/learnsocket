@@ -153,7 +153,8 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
             throw new IOException("Current channel is closed!!");
         }
         inputCallback.checkAttachNull();
-        return ioProvider.registerOutput(channel, outputCallback);
+        outputCallback.run();
+        return true;
     }
 
     @Override

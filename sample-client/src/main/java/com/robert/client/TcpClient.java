@@ -17,9 +17,11 @@ import java.nio.channels.SocketChannel;
 
 public class TcpClient extends ConnectorHandler {
 
-    private TcpClient(SocketChannel socket, File cachePath) throws IOException {
+    private TcpClient(SocketChannel socket, File cachePath, boolean printReceiveString) throws IOException {
         super(socket, cachePath);
-        getStringPacketChain().appendLast(new PrintStringPacketChain());
+        if (printReceiveString) {
+            getStringPacketChain().appendLast(new PrintStringPacketChain());
+        }
     }
 
     static class PrintStringPacketChain extends ConnectorStringPacketChain {
@@ -30,18 +32,22 @@ public class TcpClient extends ConnectorHandler {
         }
     }
 
-    public static TcpClient startConnect(ServerInfo serverInfo, File cachePath) {
+    public static TcpClient startConnect(ServerInfo serverInfo, File cachePath, boolean printReceiveString) throws IOException {
+        SocketChannel socketChannel = SocketChannel.open();
+
+        socketChannel.connect(new InetSocketAddress(serverInfo.getAddress(), serverInfo.getPort()));
+
+        PrintUtil.println("已发起服务器连接，并进入后续程序");
+        PrintUtil.println("客户端信息： " + socketChannel.getLocalAddress());
+        PrintUtil.println("服务端信息：" + socketChannel.getRemoteAddress());
         try {
-            SocketChannel socketChannel = SocketChannel.open();
-            socketChannel.connect(new InetSocketAddress(serverInfo.getAddress(), serverInfo.getPort()));
-            PrintUtil.println("已发起服务器连接，并进入后续程序");
-            PrintUtil.println("客户端信息： " + socketChannel.getLocalAddress());
-            PrintUtil.println("服务端信息：" + socketChannel.getRemoteAddress());
-            return new TcpClient(socketChannel, cachePath);
+            return new TcpClient(socketChannel, cachePath, printReceiveString);
         } catch (IOException e) {
+            PrintUtil.println("连接异常");
             e.printStackTrace();
-            return null;
+            CloseUtils.close(socketChannel);
         }
+        return null;
     }
 
 }
