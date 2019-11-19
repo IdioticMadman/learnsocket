@@ -12,7 +12,7 @@ public interface Receiver extends Closeable {
      * @return
      * @throws IOException
      */
-    void setReceiveEventProcessor(IoArgs.IoArgsEventProcessor processor);
+    void setReceiveListener(IoArgs.IoArgsEventProcessor processor);
 
     /**
      * 接收数据

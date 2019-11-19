@@ -10,7 +10,9 @@ public class ReceiveFrameFactory {
      */
     public static AbsReceiveFrame createInstance(IoArgs args) {
         byte[] buffer = new byte[Frame.FRAME_HEADER_LENGTH];
+        //读取出来frame的头部信息
         args.writeTo(buffer, 0);
+        //获取frame的类型
         byte type = buffer[2];
         switch (type) {
             case Frame.TYPE_PACKET_HEADER:

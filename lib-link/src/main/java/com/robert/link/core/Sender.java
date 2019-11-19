@@ -12,7 +12,7 @@ public interface Sender extends Closeable {
      * @return
      * @throws IOException
      */
-    void setSenderEventProcessor(IoArgs.IoArgsEventProcessor processor);
+    void setSenderListener(IoArgs.IoArgsEventProcessor processor);
 
     /**
      * 异步发送数据

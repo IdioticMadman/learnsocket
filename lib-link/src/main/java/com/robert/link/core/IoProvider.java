@@ -1,6 +1,7 @@
 package com.robert.link.core;
 
 import java.io.Closeable;
+import java.io.IOException;
 import java.nio.channels.SocketChannel;
 
 /**
@@ -9,7 +10,7 @@ import java.nio.channels.SocketChannel;
 public interface IoProvider extends Closeable {
 
 
-    boolean register(HandleProviderCallback outputCallback);
+    void register(HandleProviderCallback callback) throws IOException;
 
     void unRegister(SocketChannel channel);
 
@@ -17,15 +18,11 @@ public interface IoProvider extends Closeable {
 
         private final IoProvider ioProvider;
         //可能由不同线程操作，需保持可见性
-        private volatile IoArgs attach;
+        protected volatile IoArgs attach;
 
         public HandleProviderCallback(IoProvider provider, SocketChannel channel, int ops) {
             super(channel, ops);
             this.ioProvider = provider;
-        }
-
-        protected void setAttach(IoArgs attach) {
-            this.attach = attach;
         }
 
         @Override
@@ -43,6 +40,7 @@ public interface IoProvider extends Closeable {
 
         /**
          * 可以提供io操作
+         *
          * @param attach 附加
          */
         public abstract boolean onProviderIo(IoArgs attach);

@@ -207,10 +207,9 @@ public class IoArgs {
         /**
          * 消费失败时回调
          *
-         * @param ioArgs
-         * @param exception
+         * @param throwable
          */
-        boolean onConsumeFailed(IoArgs ioArgs, Exception exception);
+        boolean onConsumeFailed(Throwable throwable);
 
         /**
          * 消费完成回调

@@ -5,16 +5,22 @@ import com.robert.link.core.IoTask;
 import com.robert.util.CloseUtils;
 
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.nio.channels.*;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 @SuppressWarnings("MagicConstant")
 public abstract class StealingSelectorThread extends Thread {
+
+    private static final int MAX_ONCE_READ_TASK = 128;
+    private static final int MAX_ONCE_WRITE_TASK = 128;
+    private static final int MAX_ONCE_RUN_TASK = MAX_ONCE_READ_TASK + MAX_ONCE_WRITE_TASK;
 
     //允许的操作
     private static final int VALID_OPS = SelectionKey.OP_READ | SelectionKey.OP_WRITE;
@@ -22,26 +28,26 @@ public abstract class StealingSelectorThread extends Thread {
     private final Selector selector;
 
     private volatile boolean isRunning = true;
-
-    private final LinkedBlockingQueue<IoTask> readyTaskQueue = new LinkedBlockingQueue<>();
-
-    private final LinkedBlockingQueue<IoTask> registerTaskQueue = new LinkedBlockingQueue<>();
-
-    private final List<IoTask> onceReadyTaskCache = new ArrayList<>(200);
-
+    //准备就绪队列，可以进行IO操作了
+    private final ArrayBlockingQueue<IoTask> readyTaskQueue = new ArrayBlockingQueue<>(MAX_ONCE_RUN_TASK);
+    //需注册到channel上面的task的队列
+    private final ConcurrentLinkedQueue<IoTask> registerTaskQueue = new ConcurrentLinkedQueue<>();
+    //饱和度
     private final AtomicLong saturatingCapacity = new AtomicLong();
     //用于多线程协同的工具
     private volatile StealingService stealingService;
+    //解除注册的锁
+    private final AtomicBoolean unRegisterLocker = new AtomicBoolean(false);
 
     public StealingSelectorThread(Selector selector) {
         this.selector = selector;
     }
 
-    public LinkedBlockingQueue<IoTask> getReadyTaskQueue() {
+    Queue<IoTask> getReadyTaskQueue() {
         return readyTaskQueue;
     }
 
-    public long getSaturatingCapacity() {
+    long getSaturatingCapacity() {
         if (selector.isOpen()) {
             return saturatingCapacity.get();
         }
@@ -51,52 +57,71 @@ public abstract class StealingSelectorThread extends Thread {
     /**
      * 将单次就绪的队列加入总队列中
      */
-    private void joinTaskQueue(LinkedBlockingQueue<IoTask> readyTaskQueue, List<IoTask> onceReadyTaskCache) {
+    private void joinTaskQueue(ArrayBlockingQueue<IoTask> readyTaskQueue, List<IoTask> onceReadyTaskCache) {
         readyTaskQueue.addAll(onceReadyTaskCache);
     }
 
     /**
      * 将通道注册到当前selector
      */
-    public boolean register(SocketChannel channel, int ops, IoProvider.HandleProviderCallback callback) {
-        if (channel.isOpen()) {
-            IoTask ioTask = new IoTask(channel, ops, callback);
-            registerTaskQueue.offer(ioTask);
-            return true;
-        } else {
-            return false;
+    public void register(IoTask task) {
+        if ((task.ops & ~VALID_OPS) != 0) {
+            throw new UnsupportedOperationException("Unsupported register ops: " + task.ops);
         }
+        registerTaskQueue.offer(task);
+        selector.wakeup();
     }
 
+    /**
+     * 取消注册
+     */
     public void unRegister(SocketChannel channel) {
         SelectionKey selectionKey = channel.keyFor(selector);
         if (selectionKey != null && selectionKey.attachment() != null) {
             selectionKey.attach(null);
-            //添加取消操作
-            IoTask ioTask = new IoTask(channel, 0, null);
-            registerTaskQueue.offer(ioTask);
+            if (Thread.currentThread() == this) {
+                selectionKey.cancel();
+            } else {
+                synchronized (unRegisterLocker) {
+                    //上锁取消
+                    unRegisterLocker.set(true);
+                    selector.wakeup();
+                    selectionKey.cancel();
+                    unRegisterLocker.set(false);
+                }
+            }
         }
     }
 
     @Override
     public void run() {
         final Selector selector = this.selector;
-        final LinkedBlockingQueue<IoTask> registerTaskQueue = this.registerTaskQueue;
-        final LinkedBlockingQueue<IoTask> readyTaskQueue = this.readyTaskQueue;
-        final List<IoTask> onceReadyTaskCache = this.onceReadyTaskCache;
+        final ConcurrentLinkedQueue<IoTask> registerTaskQueue = this.registerTaskQueue;
+        final ArrayBlockingQueue<IoTask> readyTaskQueue = this.readyTaskQueue;
+        //fixme 为什么这个地方不能放全局
+        final List<IoTask> onceReadyReadTaskCache = new ArrayList<>(MAX_ONCE_READ_TASK);
+        final List<IoTask> onceReadyWriteTaskCache = new ArrayList<>(MAX_ONCE_WRITE_TASK);
 
         try {
             while (isRunning) {
                 //将待注册的Queue中的task，都注册到selector上面
                 consumeRegisterToDoTasks(selector, registerTaskQueue);
 
-                if ((selector.selectNow()) == 0) {
-                    //检查一次
+                int count = selector.select();
+
+                while (unRegisterLocker.get()) {
                     Thread.yield();
+                }
+
+                if (count == 0) {
+                    //检查一次
                     continue;
                 }
                 Set<SelectionKey> selectionKeys = selector.selectedKeys();
                 Iterator<SelectionKey> iterator = selectionKeys.iterator();
+
+                int onceReadTaskCount = MAX_ONCE_READ_TASK;
+                int onceWriteTaskCount = MAX_ONCE_WRITE_TASK;
 
                 //拿到就绪的集合开始遍历
                 while (iterator.hasNext()) {
@@ -108,31 +133,41 @@ public abstract class StealingSelectorThread extends Thread {
                             int readyOps = key.readyOps();
                             int interestOps = key.interestOps();
 
-                            if ((readyOps & SelectionKey.OP_READ) != 0) {
+                            if ((readyOps & SelectionKey.OP_READ) != 0 && --onceReadTaskCount > 0) {
                                 //是否可读
-                                onceReadyTaskCache.add(keyAttachment.taskForReadable);
+                                onceReadyReadTaskCache.add(keyAttachment.taskForReadable);
                                 interestOps = interestOps & ~SelectionKey.OP_READ;
                             }
 
-                            if ((readyOps & SelectionKey.OP_WRITE) != 0) {
+                            if ((readyOps & SelectionKey.OP_WRITE) != 0 && --onceWriteTaskCount > 0) {
                                 //是否可写
-                                onceReadyTaskCache.add(keyAttachment.taskForWritable);
+                                onceReadyWriteTaskCache.add(keyAttachment.taskForWritable);
                                 interestOps = interestOps & ~SelectionKey.OP_WRITE;
                             }
                             //取消已就绪的Ops
                             key.interestOps(interestOps);
                         } catch (CancelledKeyException e) {
                             //当前连接被取消，直接移出相关任务
-                            onceReadyTaskCache.remove(keyAttachment.taskForReadable);
-                            onceReadyTaskCache.remove(keyAttachment.taskForWritable);
+                            if (keyAttachment.taskForReadable != null) {
+                                onceReadyReadTaskCache.remove(keyAttachment.taskForReadable);
+                            }
+                            if (keyAttachment.taskForWritable != null) {
+                                onceReadyWriteTaskCache.remove(keyAttachment.taskForWritable);
+                            }
                         }
                     }
                     iterator.remove();
                 }
-                if (!onceReadyTaskCache.isEmpty()) {
+                if (!onceReadyReadTaskCache.isEmpty()) {
                     //添加到就绪队列
-                    joinTaskQueue(readyTaskQueue, onceReadyTaskCache);
-                    onceReadyTaskCache.clear();
+                    joinTaskQueue(readyTaskQueue, onceReadyReadTaskCache);
+                    onceReadyReadTaskCache.clear();
+                }
+
+                if (!onceReadyWriteTaskCache.isEmpty()) {
+                    //添加到就绪队列
+                    joinTaskQueue(readyTaskQueue, onceReadyWriteTaskCache);
+                    onceReadyWriteTaskCache.clear();
                 }
                 //执行ready的task
                 consumeTodoTasks(readyTaskQueue, registerTaskQueue);
@@ -144,14 +179,15 @@ public abstract class StealingSelectorThread extends Thread {
         } finally {
             readyTaskQueue.clear();
             registerTaskQueue.clear();
-            onceReadyTaskCache.clear();
+            onceReadyReadTaskCache.clear();
+            onceReadyWriteTaskCache.clear();
         }
     }
 
     /**
      * 消费待完成的任务
      */
-    private void consumeTodoTasks(LinkedBlockingQueue<IoTask> readyTaskQueue, LinkedBlockingQueue<IoTask> registerTaskQueue) {
+    private void consumeTodoTasks(ArrayBlockingQueue<IoTask> readyTaskQueue, ConcurrentLinkedQueue<IoTask> registerTaskQueue) {
         final AtomicLong saturatingCapacity = this.saturatingCapacity;
 
         IoTask task = readyTaskQueue.poll();
@@ -179,37 +215,30 @@ public abstract class StealingSelectorThread extends Thread {
 
 
     //消费掉待注册的操作
-    private void consumeRegisterToDoTasks(Selector selector, LinkedBlockingQueue<IoTask> registerTaskQueue) {
+    private void consumeRegisterToDoTasks(Selector selector, ConcurrentLinkedQueue<IoTask> registerTaskQueue) {
         IoTask registerTask = registerTaskQueue.poll();
         while (registerTask != null) {
             try {
                 final SocketChannel channel = registerTask.channel;
                 int ops = registerTask.ops;
-                if (ops == 0) {
-                    //取消
-                    SelectionKey selectionKey = channel.keyFor(selector);
-                    if (selectionKey != null) {
-                        selectionKey.cancel();
-                    }
-                } else if ((ops & ~VALID_OPS) == 0) {
-                    //注册
-                    SelectionKey selectionKey = channel.keyFor(selector);
-                    if (selectionKey == null) {
-                        selectionKey = channel.register(selector, ops, new KeyAttachment());
-                    } else {
-                        selectionKey.interestOps(selectionKey.interestOps() | ops);
-                    }
-                    Object attachment = selectionKey.attachment();
-                    if (attachment instanceof KeyAttachment) {
-                        ((KeyAttachment) attachment).attach(ops, registerTask);
-                    } else {
-                        selectionKey.cancel();
-                    }
+
+                //注册
+                SelectionKey selectionKey = channel.keyFor(selector);
+                if (selectionKey == null) {
+                    selectionKey = channel.register(selector, ops, new KeyAttachment());
+                } else {
+                    selectionKey.interestOps(selectionKey.interestOps() | ops);
+                }
+                Object attachment = selectionKey.attachment();
+                if (attachment instanceof KeyAttachment) {
+                    ((KeyAttachment) attachment).attach(ops, registerTask);
+                } else {
+                    selectionKey.cancel();
                 }
             } catch (ClosedChannelException |
                     CancelledKeyException |
                     ClosedSelectorException e) {
-                e.printStackTrace();
+                registerTask.fireThrowable(e);
             } finally {
                 registerTask = registerTaskQueue.poll();
             }

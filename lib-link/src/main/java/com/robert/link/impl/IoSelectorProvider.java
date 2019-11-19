@@ -2,6 +2,7 @@ package com.robert.link.impl;
 
 import com.robert.NameableThreadFactory;
 import com.robert.link.core.IoProvider;
+import com.robert.link.core.IoTask;
 import com.robert.util.CloseUtils;
 
 import java.io.IOException;
@@ -62,28 +63,25 @@ public class IoSelectorProvider implements IoProvider {
     }
 
     @Override
-    public boolean registerInput(SocketChannel channel, HandleProviderCallback inputCallback) {
+    public void register(HandleProviderCallback callback) throws IOException {
+        SelectionKey key;
+        if (callback.ops == SelectionKey.OP_READ) {
 
-        return registerSelection(channel, readSelector, SelectionKey.OP_READ,
-                inRegInput, inputCallbackMap, inputCallback) != null;
+            key = registerSelection(callback.channel, readSelector, SelectionKey.OP_READ,
+                    inRegInput, inputCallbackMap, callback);
+        } else {
+            key = registerSelection(callback.channel, writeSelector, SelectionKey.OP_WRITE,
+                    inRegOutput, outputCallbackMap, callback);
+        }
+        if (key == null) {
+            throw new IOException("Register error: channel: " + callback.channel + " ops:" + callback.ops);
+        }
     }
 
     @Override
-    public boolean registerOutput(SocketChannel channel, HandleProviderCallback outputCallback) {
-
-        return registerSelection(channel, writeSelector, SelectionKey.OP_WRITE,
-                inRegOutput, outputCallbackMap, outputCallback) != null;
-    }
-
-
-    @Override
-    public void unRegisterInput(SocketChannel channel) {
+    public void unRegister(SocketChannel channel) {
         unRegisterSelection(channel, readSelector, inputCallbackMap, inRegInput);
-    }
 
-    @Override
-    public void unRegisterOutput(SocketChannel channel) {
-        unRegisterSelection(channel, writeSelector, outputCallbackMap, inRegOutput);
     }
 
     @Override
@@ -205,6 +203,7 @@ public class IoSelectorProvider implements IoProvider {
             }
         }
     }
+
 
     static class HandleThread extends Thread {
 

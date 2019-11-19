@@ -1,6 +1,7 @@
 package com.robert.link.impl.bridge;
 
 import com.robert.link.core.*;
+import com.robert.link.impl.exception.EmptyIoArgsException;
 import com.robert.plugin.CircularByteBuffer;
 
 import java.io.IOException;
@@ -25,6 +26,7 @@ public class BridgeSocketDispatcher implements ReceiverDispatcher, SenderDispatc
 
     private final AtomicBoolean isSending = new AtomicBoolean(false);
 
+    //fixme 好像会一直处于死循环
     private final IoArgs.IoArgsEventProcessor sendEventProcessor = new IoArgs.IoArgsEventProcessor() {
         @Override
         public IoArgs provideIoArgs() {
@@ -46,20 +48,32 @@ public class BridgeSocketDispatcher implements ReceiverDispatcher, SenderDispatc
         }
 
         @Override
-        public void onConsumeFailed(IoArgs ioArgs, Exception exception) {
-            exception.printStackTrace();
-            synchronized (isSending) {
-                isSending.set(false);
+        public boolean onConsumeFailed(Throwable throwable) {
+            if (throwable instanceof EmptyIoArgsException) {
+                synchronized (isSending) {
+                    isSending.set(false);
+                    requestSend();
+                }
+                //不用关闭连接，继续请求发送
+                return false;
+            } else {
+                return true;
             }
-            requestSend();
         }
 
+
         @Override
-        public void onConsumeComplete(IoArgs ioArgs) {
-            synchronized (isSending) {
-                isSending.set(false);
+        public boolean onConsumeComplete(IoArgs ioArgs) {
+            if (buffer.getAvailable() > 0) {
+                //继续注册发送
+                return true;
+            } else {
+                synchronized (isSending) {
+                    isSending.set(false);
+                    requestSend();
+                }
+                return false;
             }
-            requestSend();
         }
     };
 
@@ -72,22 +86,24 @@ public class BridgeSocketDispatcher implements ReceiverDispatcher, SenderDispatc
         }
 
         @Override
-        public void onConsumeFailed(IoArgs ioArgs, Exception exception) {
-
+        public boolean onConsumeFailed(Throwable exception) {
+            new RuntimeException(exception).printStackTrace();
+            return true;
         }
 
         @Override
-        public void onConsumeComplete(IoArgs ioArgs) {
-            receiveIoArgs.finishWriting();
+        public boolean onConsumeComplete(IoArgs ioArgs) {
+            ioArgs.finishWriting();
             try {
-                receiveIoArgs.writeTo(writeByteChannel);
+                ioArgs.writeTo(writeByteChannel);
+                //接收到数据以后，请求发送数据¬
+                requestSend();
+                //继续接受数据
+                return true;
             } catch (IOException e) {
                 e.printStackTrace();
+                return false;
             }
-            //继续接收数据
-            registerReceive();
-            //接受到数据进行转发
-            requestSend();
         }
     };
 
@@ -99,7 +115,7 @@ public class BridgeSocketDispatcher implements ReceiverDispatcher, SenderDispatc
         final Sender oldSender = this.sender;
 
         if (oldSender != null) {
-            oldSender.setSenderEventProcessor(null);
+            oldSender.setSenderListener(null);
         }
         //清理操作
         synchronized (isSending) {
@@ -109,7 +125,7 @@ public class BridgeSocketDispatcher implements ReceiverDispatcher, SenderDispatc
         //设置新的发送者
         this.sender = sender;
         if (sender != null) {
-            sender.setSenderEventProcessor(sendEventProcessor);
+            sender.setSenderListener(sendEventProcessor);
             requestSend();
         }
 
@@ -117,7 +133,7 @@ public class BridgeSocketDispatcher implements ReceiverDispatcher, SenderDispatc
 
     @Override
     public void start() {
-        receiver.setReceiveEventProcessor(receiveEventProcessor);
+        receiver.setReceiveListener(receiveEventProcessor);
         registerReceive();
     }
 
@@ -126,21 +142,22 @@ public class BridgeSocketDispatcher implements ReceiverDispatcher, SenderDispatc
      */
     private void requestSend() {
         synchronized (isSending) {
+            final AtomicBoolean isRegisterSending = this.isSending;
             final Sender sender = this.sender;
             //处于发送中
-            if (isSending.get() || sender == null) {
+            if (isRegisterSending.get() || sender == null) {
                 return;
             }
 
             if (buffer.getAvailable() > 0) {
                 try {
-                    boolean isSucceed = sender.postSendAsync();
-                    if (isSucceed) {
-                        isSending.set(true);
-                    }
+                    isRegisterSending.set(true);
+                    sender.postSendAsync();
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    isRegisterSending.set(false);
                 }
+            } else {
+                isRegisterSending.set(false);
             }
         }
     }
@@ -159,6 +176,7 @@ public class BridgeSocketDispatcher implements ReceiverDispatcher, SenderDispatc
     @Override
     public void stop() {
         //nothing
+        receiver.setReceiveListener(null);
     }
 
     @Override

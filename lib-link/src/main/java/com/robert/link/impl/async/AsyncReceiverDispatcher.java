@@ -25,7 +25,7 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher,
     public AsyncReceiverDispatcher(Receiver receiver, ReceiverPacketCallback packetCallback) {
         this.receiver = receiver;
         //设置接收监听
-        this.receiver.setReceiveEventProcessor(this);
+        this.receiver.setReceiveListener(this);
         this.packetCallback = packetCallback;
         packetWriter = new AsyncPacketWriter(this);
     }
@@ -37,13 +37,14 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher,
 
     @Override
     public void stop() {
-
+        receiver.setReceiveListener(null);
     }
 
     @Override
     public void close() throws IOException {
         if (isClosed.compareAndSet(false, true)) {
             packetWriter.close();
+            receiver.setReceiveListener(null);
         }
     }
 
@@ -51,12 +52,8 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher,
         try {
             receiver.postReceiverAsync();
         } catch (IOException e) {
-            closeAndNotify();
+            CloseUtils.close(this);
         }
-    }
-
-    private void closeAndNotify() {
-        CloseUtils.close(this);
     }
 
 
@@ -69,23 +66,23 @@ public class AsyncReceiverDispatcher implements ReceiverDispatcher,
     }
 
     @Override
-    public void onConsumeFailed(IoArgs ioArgs, Exception exception) {
-        exception.printStackTrace();
+    public boolean onConsumeFailed(Throwable exception) {
+        CloseUtils.close(this);
+        return true;
     }
 
     @Override
-    public void onConsumeComplete(IoArgs ioArgs) {
-        //有数据到达，但是已被关闭
-        if (isClosed.get()) return;
+    public boolean onConsumeComplete(IoArgs ioArgs) {
+        final AtomicBoolean isClosed = this.isClosed;
+        AsyncPacketWriter packetWriter = this.packetWriter;
         //ioArgs接收完数据
         ioArgs.finishWriting();
-        //接收到数据包解析数据
         do {
             //此处需要循环处理，内部接收完一帧数据，需重新构建一帧
             packetWriter.consumeIoArgs(ioArgs);
         } while (ioArgs.remained() && !isClosed.get());
         //继续监听数据到达
-        registerReceiver();
+        return !isClosed.get();
     }
 
     @Override
