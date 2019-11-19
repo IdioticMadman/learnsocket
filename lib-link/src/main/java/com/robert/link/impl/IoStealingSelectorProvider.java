@@ -1,7 +1,7 @@
 package com.robert.link.impl;
 
 import com.robert.link.core.IoProvider;
-import com.robert.link.impl.stealing.IoTask;
+import com.robert.link.core.IoTask;
 import com.robert.link.impl.stealing.StealingSelectorThread;
 import com.robert.link.impl.stealing.StealingService;
 

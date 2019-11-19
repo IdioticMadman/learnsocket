@@ -1,8 +1,8 @@
 package com.robert.link.impl.stealing;
 
 import com.robert.link.core.IoProvider;
+import com.robert.link.core.IoTask;
 import com.robert.util.CloseUtils;
-import com.sun.xml.internal.ws.api.message.Attachment;
 
 import java.io.IOException;
 import java.nio.channels.*;

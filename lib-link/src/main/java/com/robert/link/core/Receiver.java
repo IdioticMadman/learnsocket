@@ -20,7 +20,7 @@ public interface Receiver extends Closeable {
      * @return 是否注册成功
      * @throws IOException
      */
-    boolean postReceiverAsync() throws IOException;
+    void postReceiverAsync() throws IOException;
 
     /**
      * 上一次读取到数据的时间

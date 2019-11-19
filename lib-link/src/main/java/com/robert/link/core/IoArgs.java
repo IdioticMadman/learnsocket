@@ -210,14 +210,14 @@ public class IoArgs {
          * @param ioArgs
          * @param exception
          */
-        void onConsumeFailed(IoArgs ioArgs, Exception exception);
+        boolean onConsumeFailed(IoArgs ioArgs, Exception exception);
 
         /**
          * 消费完成回调
          *
          * @param ioArgs
          */
-        void onConsumeComplete(IoArgs ioArgs);
+        boolean onConsumeComplete(IoArgs ioArgs);
     }
 
 

@@ -4,6 +4,7 @@ import com.robert.link.core.IoArgs;
 import com.robert.link.core.IoProvider;
 import com.robert.link.core.Receiver;
 import com.robert.link.core.Sender;
+import com.robert.link.impl.exception.EmptyIoArgsException;
 import com.robert.util.CloseUtils;
 import com.robert.util.PrintUtil;
 
@@ -28,7 +29,7 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
     private IoProvider.HandleProviderCallback inputCallback = new IoProvider.HandleProviderCallback() {
 
         @Override
-        public void canProviderIo(IoArgs ioArgs) {
+        public void onProviderIo(IoArgs ioArgs) {
             if (isClose.get()) {
                 return;
             }
@@ -73,7 +74,7 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
     //当可以发送数据回调
     private IoProvider.HandleProviderCallback outputCallback = new IoProvider.HandleProviderCallback() {
         @Override
-        public void canProviderIo(IoArgs ioArgs) {
+        public void onProviderIo(IoArgs ioArgs) {
             if (isClose.get()) {
                 return;
             }
@@ -172,6 +173,38 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
 
             CloseUtils.close(channel);
             statusChangedListener.onChannelClose(channel);
+        }
+    }
+
+    abstract class AbsProvideCallback extends IoProvider.HandleProviderCallback {
+
+        volatile IoArgs.IoArgsEventProcessor eventProcessor;
+        volatile long lastActiveTime = System.currentTimeMillis();
+
+        public AbsProvideCallback(IoProvider provider, SocketChannel channel, int ops) {
+            super(provider, channel, ops);
+        }
+
+        @Override
+        public boolean onProviderIo(IoArgs attach) {
+            if (isClose.get()) {
+                return false;
+            }
+            final IoArgs.IoArgsEventProcessor eventProcessor = this.eventProcessor;
+            if (eventProcessor == null) {
+                return false;
+            }
+            lastActiveTime = System.currentTimeMillis();
+            if (attach == null) {
+                attach = eventProcessor.provideIoArgs();
+            }
+            try {
+                if (attach == null) {
+                    throw new EmptyIoArgsException("ProviderIoArgs is null");
+                }
+            }
+
+            return false;
         }
     }
 

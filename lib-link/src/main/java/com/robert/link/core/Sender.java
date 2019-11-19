@@ -20,7 +20,7 @@ public interface Sender extends Closeable {
      * @return 是否发送成功
      * @throws IOException IO操作异常
      */
-    boolean postSendAsync() throws IOException;
+    void postSendAsync() throws IOException;
 
     /**
      * 获取上一次写入数据的时间
