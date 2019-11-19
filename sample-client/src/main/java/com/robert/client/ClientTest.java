@@ -6,6 +6,7 @@ import com.robert.link.core.IoContext;
 import com.robert.link.handler.ConnectorCloseChain;
 import com.robert.link.handler.ConnectorHandler;
 import com.robert.link.impl.IoSelectorProvider;
+import com.robert.link.impl.IoStealingSelectorProvider;
 import com.robert.link.impl.ScheduleImpl;
 import com.robert.util.CloseUtils;
 import com.robert.util.FileUtils;
@@ -19,7 +20,7 @@ public class ClientTest {
 
     private static final int CLIENT_SIZE = 2000;
     private static final int SEND_THREAD_SIZE = 4;
-    private static final int SEND_THREAD_DELAY = 500;
+    private static final int SEND_THREAD_DELAY = 200;
     private static volatile boolean done;
 
 
@@ -30,7 +31,7 @@ public class ClientTest {
         }
         File cachePath = FileUtils.getCacheDir("client/test");
         IoContext.setup()
-                .ioProvider(new IoSelectorProvider())
+                .ioProvider(new IoStealingSelectorProvider(3))
                 .scheduler(new ScheduleImpl(1))
                 .start();
 

@@ -156,7 +156,7 @@ public class IoSelectorProvider implements IoProvider {
                     //查询是否已经注册过
                     key = channel.keyFor(selector);
                     if (key != null) {
-                        key.interestOps(key.readyOps() | registerOps);
+                        key.interestOps(key.interestOps() | registerOps);
                     }
                 }
 
