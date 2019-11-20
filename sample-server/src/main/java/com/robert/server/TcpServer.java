@@ -222,7 +222,6 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
                 if (audioStreamConnector != null) {
                     audioCmdToStreamMap.put(handler, audioStreamConnector);
                     audioStreamToCmdMap.put(audioStreamConnector, handler);
-                    audioStreamConnector.changeToBridge();
                 }
             } else if (entity.startsWith(Commands.COMMAND_AUDIO_CREATE_ROOM)) {
                 //创建房间，并把当前connector加入房间，暂存
@@ -257,8 +256,7 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
                         //获取room里面另外一个handler
                         ConnectorHandler otherHandler = room.getTheOtherHandler(audioStreamConnector);
                         //搭起桥接
-                        otherHandler.bindToBride(audioStreamConnector.getSender());
-                        audioStreamConnector.bindToBride(otherHandler.getSender());
+                        Connector.bridge(handler, otherHandler);
                         //发送可开始聊天的stream
                         sendMessageToTarget(handler, Commands.COMMAND_INFO_AUDIO_START);
                         sendStreamConnectorMessage(handler, Commands.COMMAND_INFO_AUDIO_START);
@@ -285,7 +283,7 @@ public class TcpServer implements ServerAcceptor.AcceptListener, Group.GroupMess
         ConnectorHandler[] connectors = room.getConnectors();
         for (ConnectorHandler connector : connectors) {
             //解除桥接
-            connector.unBindToBridge();
+            connector.relieveBridge();
             //移除缓存
             audioStreamRoomMap.remove(connector);
             if (connector != audioStreamConnector) {

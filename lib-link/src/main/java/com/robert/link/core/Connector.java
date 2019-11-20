@@ -23,15 +23,18 @@ import java.util.UUID;
  */
 public abstract class Connector implements Closeable, SocketChannelAdapter.onChannelStatusChangedListener {
 
-    protected UUID key = UUID.randomUUID();
+    private UUID key = UUID.randomUUID();
     private SocketChannel channel;
+
     private SenderDispatcher senderDispatcher;
-    private ReceiverDispatcher receiverDispatcher;
+    private ReceiverDispatcher receiveDispatcher;
 
     private Sender sender;
     private Receiver receiver;
 
     private final List<ScheduleJob> scheduleJobs = new ArrayList<>(4);
+
+    private volatile Connector bridgeConnector;
 
     //包体接收回调
     private ReceiverDispatcher.ReceiverPacketCallback receiverPacketCallback = new ReceiverDispatcher.ReceiverPacketCallback() {
@@ -91,6 +94,7 @@ public abstract class Connector implements Closeable, SocketChannelAdapter.onCha
 
         socketChannel.configureBlocking(false);
         socketChannel.socket().setSoTimeout(1000);
+
         socketChannel.socket().setPerformancePreferences(1, 3, 3);
         socketChannel.setOption(StandardSocketOptions.SO_RCVBUF, 16 * 1024);
         socketChannel.setOption(StandardSocketOptions.SO_SNDBUF, 16 * 1024);
@@ -107,8 +111,10 @@ public abstract class Connector implements Closeable, SocketChannelAdapter.onCha
         //发送数据分发器
         this.senderDispatcher = new AsyncSenderDispatcher(this.sender);
         //接收数据分发器
-        this.receiverDispatcher = new AsyncReceiverDispatcher(this.receiver, receiverPacketCallback);
-        receiverDispatcher.start();
+        this.receiveDispatcher = new AsyncReceiverDispatcher(this.receiver, receiverPacketCallback);
+
+        //启动接受监听
+        receiveDispatcher.start();
     }
 
     public void send(String msg) {
@@ -139,42 +145,56 @@ public abstract class Connector implements Closeable, SocketChannelAdapter.onCha
 
     }
 
-    /**
-     * 改变当前接收调度器为桥接模式
-     */
-    public void changeToBridge() {
-        if (receiverDispatcher instanceof BridgeSocketDispatcher) {
-            //已经改变直接返回
+
+    public static synchronized void bridge(Connector one, Connector another) {
+        if (one == another) {
+            throw new UnsupportedOperationException("Can not set current connector sender to self bridge mode");
+
+        }
+        if (one.receiveDispatcher instanceof BridgeSocketDispatcher ||
+                another.receiveDispatcher instanceof BridgeSocketDispatcher) {
+            //已经转变成桥接模式了
             return;
         }
-        //停止之前的
-        receiverDispatcher.stop();
-        BridgeSocketDispatcher dispatcher = new BridgeSocketDispatcher(receiver);
-        receiverDispatcher = dispatcher;
-        dispatcher.start();
+        //之前的停止
+        one.receiveDispatcher.stop();
+        another.receiveDispatcher.stop();
+
+        BridgeSocketDispatcher oneDispatcher = new BridgeSocketDispatcher(one.receiver, one.sender);
+        BridgeSocketDispatcher anotherDispatcher = new BridgeSocketDispatcher(another.receiver, another.sender);
+
+        one.receiveDispatcher = oneDispatcher;
+        one.senderDispatcher = anotherDispatcher;
+
+        another.receiveDispatcher = anotherDispatcher;
+        another.senderDispatcher = oneDispatcher;
+
+        one.bridgeConnector = another;
+        another.bridgeConnector = one;
+
+        oneDispatcher.start();
+        anotherDispatcher.start();
     }
 
-    /**
-     * 将另外一个链接的发送者绑定到当前链接的桥接调度器上实现两个链接的桥接功能
-     */
-    public void bindToBride(Sender sender) {
-        if (sender == this.sender) {
-            throw new UnsupportedOperationException("Can not set current connector sender to self bridge mode");
+    public void relieveBridge() {
+        final Connector another = this.bridgeConnector;
+        if (another == null) return;
+        this.bridgeConnector = null;
+        another.bridgeConnector = null;
+        if (!(this.receiveDispatcher instanceof BridgeSocketDispatcher) ||
+                !(another.receiveDispatcher instanceof BridgeSocketDispatcher)) {
+            throw new IllegalStateException("receiveDispatcher is not BridgeSocketDispatcher!");
         }
-        if (!(receiverDispatcher instanceof BridgeSocketDispatcher)) {
-            throw new IllegalStateException("receiveDispatcher is not BridgeSocketDispatcher");
-        }
-        ((BridgeSocketDispatcher) receiverDispatcher).bindSender(sender);
-    }
 
-    /**
-     * 将之前链接的发送者解除绑定，解除桥接数据发送功能
-     */
-    public void unBindToBridge() {
-        if (!(receiverDispatcher instanceof BridgeSocketDispatcher)) {
-            throw new IllegalStateException("receiveDispatcher is not BridgeSocketDispatcher");
-        }
-        ((BridgeSocketDispatcher) receiverDispatcher).bindSender(null);
+        this.receiveDispatcher.stop();
+        another.receiveDispatcher.stop();
+        this.senderDispatcher = new AsyncSenderDispatcher(this.sender);
+        this.receiveDispatcher = new AsyncReceiverDispatcher(this.receiver, this.receiverPacketCallback);
+        this.receiveDispatcher.start();
+
+        another.senderDispatcher = new AsyncSenderDispatcher(another.sender);
+        another.receiveDispatcher = new AsyncReceiverDispatcher(another.receiver, another.receiverPacketCallback);
+        another.receiveDispatcher.start();
     }
 
     /**
@@ -194,20 +214,21 @@ public abstract class Connector implements Closeable, SocketChannelAdapter.onCha
 
     @Override
     public void close() throws IOException {
-        this.receiverDispatcher.close();
-        this.senderDispatcher.close();
-        this.receiver.close();
-        this.sender.close();
-    }
-
-    @Override
-    public void onChannelClose(SocketChannel channel) {
         synchronized (scheduleJobs) {
             for (ScheduleJob scheduleJob : scheduleJobs) {
                 scheduleJob.unSchedule();
             }
             scheduleJobs.clear();
         }
+        this.receiveDispatcher.close();
+        this.senderDispatcher.close();
+        this.receiver.close();
+        this.sender.close();
+        this.channel.close();
+    }
+
+    @Override
+    public void onChannelClose(SocketChannel channel) {
         CloseUtils.close(this);
     }
 
