@@ -98,7 +98,6 @@ public abstract class StealingSelectorThread extends Thread {
         final Selector selector = this.selector;
         final ConcurrentLinkedQueue<IoTask> registerTaskQueue = this.registerTaskQueue;
         final ArrayBlockingQueue<IoTask> readyTaskQueue = this.readyTaskQueue;
-        //fixme 为什么这个地方不能放全局
         final List<IoTask> onceReadyReadTaskCache = new ArrayList<>(MAX_ONCE_READ_TASK);
         final List<IoTask> onceReadyWriteTaskCache = new ArrayList<>(MAX_ONCE_WRITE_TASK);
 
@@ -179,8 +178,6 @@ public abstract class StealingSelectorThread extends Thread {
         } finally {
             readyTaskQueue.clear();
             registerTaskQueue.clear();
-            onceReadyReadTaskCache.clear();
-            onceReadyWriteTaskCache.clear();
         }
     }
 

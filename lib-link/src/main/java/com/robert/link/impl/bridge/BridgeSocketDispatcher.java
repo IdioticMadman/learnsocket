@@ -14,153 +14,33 @@ public class BridgeSocketDispatcher implements ReceiverDispatcher, SenderDispatc
 
     private final CircularByteBuffer buffer = new CircularByteBuffer(512, true);
 
-    private final ReadableByteChannel readByteChannel = Channels.newChannel(buffer.getInputStream());
-    private final WritableByteChannel writeByteChannel = Channels.newChannel(buffer.getOutputStream());
-
-    //不需要全部填充满当前args
-    private final IoArgs receiveIoArgs = new IoArgs(256, false);
     private final Receiver receiver;
 
-    private final IoArgs sendIoArgs = new IoArgs();
-    private volatile Sender sender;
+    private final Sender sender;
 
-    private final AtomicBoolean isSending = new AtomicBoolean(false);
+    private final SendEventProcessor sendEventProcessor;
 
-    //fixme 好像会一直处于死循环
-    private final IoArgs.IoArgsEventProcessor sendEventProcessor = new IoArgs.IoArgsEventProcessor() {
-        @Override
-        public IoArgs provideIoArgs() {
-            try {
-                //获取缓冲区数据
-                int available = buffer.getAvailable();
-                IoArgs ioArgs = BridgeSocketDispatcher.this.sendIoArgs;
-                if (available > 0) {
-                    ioArgs.limit(available);
-                    ioArgs.startWriting();
-                    ioArgs.readFrom(readByteChannel);
-                    ioArgs.finishWriting();
-                    return ioArgs;
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            return null;
-        }
-
-        @Override
-        public boolean onConsumeFailed(Throwable throwable) {
-            if (throwable instanceof EmptyIoArgsException) {
-                synchronized (isSending) {
-                    isSending.set(false);
-                    requestSend();
-                }
-                //不用关闭连接，继续请求发送
-                return false;
-            } else {
-                return true;
-            }
-        }
-
-
-        @Override
-        public boolean onConsumeComplete(IoArgs ioArgs) {
-            if (buffer.getAvailable() > 0) {
-                //继续注册发送
-                return true;
-            } else {
-                synchronized (isSending) {
-                    isSending.set(false);
-                    requestSend();
-                }
-                return false;
-            }
-        }
-    };
-
-    private final IoArgs.IoArgsEventProcessor receiveEventProcessor = new IoArgs.IoArgsEventProcessor() {
-        @Override
-        public IoArgs provideIoArgs() {
-            receiveIoArgs.resetLimit();
-            receiveIoArgs.startWriting();
-            return receiveIoArgs;
-        }
-
-        @Override
-        public boolean onConsumeFailed(Throwable exception) {
-            new RuntimeException(exception).printStackTrace();
-            return true;
-        }
-
-        @Override
-        public boolean onConsumeComplete(IoArgs ioArgs) {
-            ioArgs.finishWriting();
-            try {
-                ioArgs.writeTo(writeByteChannel);
-                //接收到数据以后，请求发送数据¬
-                requestSend();
-                //继续接受数据
-                return true;
-            } catch (IOException e) {
-                e.printStackTrace();
-                return false;
-            }
-        }
-    };
-
-    public BridgeSocketDispatcher(Receiver receiver) {
+    public BridgeSocketDispatcher(Receiver receiver, Sender sender) {
         this.receiver = receiver;
-    }
-
-    public void bindSender(Sender sender) {
-        final Sender oldSender = this.sender;
-
-        if (oldSender != null) {
-            oldSender.setSenderListener(null);
-        }
-        //清理操作
-        synchronized (isSending) {
-            isSending.set(false);
-        }
-        buffer.clear();
-        //设置新的发送者
         this.sender = sender;
-        if (sender != null) {
-            sender.setSenderListener(sendEventProcessor);
-            requestSend();
-        }
 
+        receiver.setReceiveListener(new ReceiveEventProcessor(buffer));
+        sender.setSenderListener(sendEventProcessor = new SendEventProcessor(sender, buffer));
     }
 
     @Override
     public void start() {
-        receiver.setReceiveListener(receiveEventProcessor);
         registerReceive();
     }
 
-    /**
-     * 请求发送
-     */
-    private void requestSend() {
-        synchronized (isSending) {
-            final AtomicBoolean isRegisterSending = this.isSending;
-            final Sender sender = this.sender;
-            //处于发送中
-            if (isRegisterSending.get() || sender == null) {
-                return;
-            }
-
-            if (buffer.getAvailable() > 0) {
-                try {
-                    isRegisterSending.set(true);
-                    sender.postSendAsync();
-                } catch (IOException e) {
-                    isRegisterSending.set(false);
-                }
-            } else {
-                isRegisterSending.set(false);
-            }
-        }
+    private int getSpaceReading() {
+        return buffer.getAvailable();
     }
+
+    private int getSpaceWriting() {
+        return buffer.getSpaceLeft();
+    }
+
 
     /**
      * 注册接收数据
@@ -178,6 +58,140 @@ public class BridgeSocketDispatcher implements ReceiverDispatcher, SenderDispatc
         //nothing
         receiver.setReceiveListener(null);
     }
+
+    private class SendEventProcessor implements IoArgs.IoArgsEventProcessor {
+
+        private final ReadableByteChannel readByteChannel;
+        private final IoArgs ioArgs = new IoArgs(256);
+        private final AtomicBoolean isSending = new AtomicBoolean();
+        private final Sender sender;
+
+        SendEventProcessor(Sender sender, CircularByteBuffer buffer) {
+            this.sender = sender;
+            this.readByteChannel = Channels.newChannel(buffer.getInputStream());
+        }
+
+        @Override
+        public IoArgs provideIoArgs() {
+            BridgeIllegalStateException.check(isSending.get());
+            final int spaceReading = getSpaceReading();
+            if (spaceReading > 0) {
+                final IoArgs ioArgs = this.ioArgs;
+                ioArgs.limit(spaceReading);
+                ioArgs.startWriting();
+                try {
+                    //获取缓冲区数据
+                    ioArgs.readFrom(readByteChannel);
+                    ioArgs.finishWriting();
+                    return ioArgs;
+                } catch (IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public boolean onConsumeFailed(Throwable throwable) {
+            BridgeIllegalStateException.check(isSending.compareAndSet(true, false));
+            if (throwable instanceof EmptyIoArgsException) {
+                requestSend();
+                return false;
+            } else if (throwable instanceof IOException) {
+                return true;
+            } else {
+                throw new RuntimeException(throwable);
+            }
+        }
+
+
+        @Override
+        public boolean onConsumeComplete(IoArgs ioArgs) {
+            final int spaceReading = getSpaceReading();
+            if (spaceReading > 0) {
+                return isSending.get();
+            } else {
+                isSending.set(false);
+                return false;
+            }
+        }
+
+        /**
+         * 请求发送
+         */
+        synchronized void requestSend() {
+            final AtomicBoolean isSending = this.isSending;
+            final Sender sender = this.sender;
+            if (sender != BridgeSocketDispatcher.this.sender || isSending.get()) {
+                return;
+            }
+            int spaceReading = getSpaceReading();
+            if (spaceReading > 0 && isSending.compareAndSet(false, true)) {
+                try {
+                    sender.postSendAsync();
+                } catch (IOException e) {
+                    BridgeIllegalStateException.check(isSending.compareAndSet(true, false));
+                }
+            }
+        }
+
+    }
+
+    private class ReceiveEventProcessor implements IoArgs.IoArgsEventProcessor {
+
+        private final WritableByteChannel writeByteChannel;
+        private IoArgs ioArgs = new IoArgs(256, false);
+
+
+        ReceiveEventProcessor(CircularByteBuffer buffer) {
+            writeByteChannel = Channels.newChannel(buffer.getOutputStream());
+        }
+
+        @Override
+        public IoArgs provideIoArgs() {
+            final int spaceWriting = getSpaceWriting();
+            if (spaceWriting > 0) {
+                IoArgs ioArgs = this.ioArgs;
+                ioArgs.limit(spaceWriting);
+                ioArgs.startWriting();
+                return ioArgs;
+            }
+            return null;
+        }
+
+        @Override
+        public boolean onConsumeFailed(Throwable e) {
+            if (e instanceof EmptyIoArgsException) {
+                sendEventProcessor.requestSend();
+                registerReceive();
+                return false;
+            } else if (e instanceof IOException) {
+                return true;
+            } else {
+                throw new RuntimeException();
+            }
+        }
+
+        @Override
+        public boolean onConsumeComplete(IoArgs ioArgs) {
+            ioArgs.finishWriting();
+            try {
+                if (ioArgs.remained()) {
+
+                    ioArgs.writeTo(writeByteChannel);
+                }
+                //接收到数据以后，请求发送数据
+                sendEventProcessor.requestSend();
+
+                //继续接受数据
+                return true;
+            } catch (IOException e) {
+                //不在接收数据
+                return false;
+            }
+        }
+    }
+
 
     @Override
     public void send(SendPacket packet) {

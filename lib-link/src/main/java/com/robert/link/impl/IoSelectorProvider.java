@@ -81,7 +81,7 @@ public class IoSelectorProvider implements IoProvider {
     @Override
     public void unRegister(SocketChannel channel) {
         unRegisterSelection(channel, readSelector, inputCallbackMap, inRegInput);
-
+        unRegisterSelection(channel, writeSelector, outputCallbackMap, inRegOutput);
     }
 
     @Override
