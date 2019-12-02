@@ -11,6 +11,7 @@ import java.nio.channels.WritableByteChannel;
  * 封装byteBuffer的操作
  */
 public class IoArgs {
+    //是否需要把剩下的空间消费完才返回
     private final boolean isNeedConsumeReaming;
     private int limit;
     private final ByteBuffer byteBuffer;
@@ -185,6 +186,9 @@ public class IoArgs {
         return emptySize;
     }
 
+    /**
+     * 重置limit
+     */
     public void resetLimit() {
         this.limit = byteBuffer.capacity();
     }
@@ -207,14 +211,16 @@ public class IoArgs {
         /**
          * 消费失败时回调
          *
-         * @param throwable
+         * @param throwable 异常
+         * @return 是否关闭链接，True为关闭链接
          */
         boolean onConsumeFailed(Throwable throwable);
 
         /**
          * 消费完成回调
          *
-         * @param ioArgs
+         * @param ioArgs 数据
+         * @return 是否继续注册下一次消费。true为注册调度下一次消费
          */
         boolean onConsumeComplete(IoArgs ioArgs);
     }

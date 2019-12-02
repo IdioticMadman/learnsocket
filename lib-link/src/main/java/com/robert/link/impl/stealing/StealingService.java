@@ -4,8 +4,6 @@ import com.robert.link.core.IoTask;
 
 import java.util.Arrays;
 import java.util.Queue;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.IntFunction;
 
 public class StealingService {
@@ -29,7 +27,7 @@ public class StealingService {
     /**
      * 排除自己的队列，从别人的队列中窃取一个任务出来
      */
-    IoTask steal(ArrayBlockingQueue<IoTask> excludedQueue) {
+    IoTask steal(Queue<IoTask> excludedQueue) {
         final int minSafetyThreshold = this.minSafetyThreshold;
         final Queue<IoTask>[] queues = this.queues;
         for (Queue<IoTask> queue : queues) {

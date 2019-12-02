@@ -1,7 +1,5 @@
 package com.robert.link.core;
 
-import com.robert.link.core.IoProvider;
-
 import java.nio.channels.SocketChannel;
 
 public abstract class IoTask {

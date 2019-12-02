@@ -73,10 +73,24 @@ public abstract class Frame {
         return (short) (header[4] & 0xff);
     }
 
+    /**
+     * 进行数据读或写操作
+     *
+     * @param args 数据
+     * @return 是否已消费完全， True：则无需再传递数据到Frame或从当前Frame读取数据
+     */
     public abstract boolean handle(IoArgs args) throws IOException;
 
+    /**
+     * 基于当前帧尝试构建下一份待消费的帧
+     *
+     * @return NULL：没有待消费的帧
+     */
     public abstract Frame nextFrame();
 
+    /**
+     * 获取可消费的长度
+     */
     public abstract int getConsumableLength();
 
 }

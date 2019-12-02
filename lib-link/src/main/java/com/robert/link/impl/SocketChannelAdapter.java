@@ -73,9 +73,7 @@ public class SocketChannelAdapter implements Sender, Receiver, Closeable {
     @Override
     public void close() throws IOException {
         if (isClose.compareAndSet(false, true)) {
-
             ioProvider.unRegister(channel);
-            CloseUtils.close(channel);
             statusChangedListener.onChannelClose(channel);
         }
     }

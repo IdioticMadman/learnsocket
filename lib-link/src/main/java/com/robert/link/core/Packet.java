@@ -28,6 +28,11 @@ public abstract class Packet<Stream extends Closeable> implements Closeable {
     // 长链接流 类型
     public static final byte TYPE_STREAM_DIRECT = 4;
 
+    /**
+     * 创建流操作，应当将当前需要传输的数据转化为流
+     *
+     * @return {@link java.io.InputStream} or {@link java.io.OutputStream}
+     */
     public abstract Stream createStream();
 
     /**
@@ -42,6 +47,11 @@ public abstract class Packet<Stream extends Closeable> implements Closeable {
         return stream;
     }
 
+    /**
+     * 对外的关闭资源操作，如果流处于打开状态应当进行关闭
+     *
+     * @throws IOException IO异常
+     */
     @Override
     public final void close() throws IOException {
         if (stream != null) {
