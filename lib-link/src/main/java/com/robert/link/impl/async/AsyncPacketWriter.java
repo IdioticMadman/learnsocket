@@ -58,7 +58,7 @@ public class AsyncPacketWriter implements Closeable {
                 if (currentFrame.handle(ioArgs)) {
                     if (currentFrame instanceof ReceiveHeaderFrame) {
                         ReceiveHeaderFrame headerFrame = (ReceiveHeaderFrame) currentFrame;
-                        ReceivePacket packet = packetProvider.takePacket(headerFrame.getPacketType(),
+                        ReceivePacket<?, ?> packet = packetProvider.takePacket(headerFrame.getPacketType(),
                                 headerFrame.getLength(),
                                 headerFrame.getHeaderInfo());
                         appendNewPacket(headerFrame.getBodyIdentifier(), packet);
@@ -97,7 +97,7 @@ public class AsyncPacketWriter implements Closeable {
     /**
      * 暂存packet
      */
-    private void appendNewPacket(short bodyIdentifier, ReceivePacket packet) {
+    private void appendNewPacket(short bodyIdentifier, ReceivePacket<?, ?> packet) {
         synchronized (packetMap) {
             ReceiveModel model = new ReceiveModel(packet);
             packetMap.put(bodyIdentifier, model);
@@ -141,7 +141,7 @@ public class AsyncPacketWriter implements Closeable {
         synchronized (packetMap) {
             ReceiveModel model = packetMap.get(bodyIdentifier);
             if (model != null) {
-                ReceivePacket packet = model.receivePacket;
+                ReceivePacket<?, ?> packet = model.receivePacket;
                 packetProvider.completePacket(packet, false);
             }
         }
@@ -160,7 +160,7 @@ public class AsyncPacketWriter implements Closeable {
     }
 
     interface PacketProvider {
-        ReceivePacket takePacket(byte type, long length, byte[] headerInfo);
+        ReceivePacket<?, ?> takePacket(byte type, long length, byte[] headerInfo);
 
         void completePacket(ReceivePacket<?, ?> receivePacket, boolean isSucceed);
 
@@ -168,7 +168,7 @@ public class AsyncPacketWriter implements Closeable {
     }
 
     static class ReceiveModel {
-        ReceivePacket receivePacket;
+        ReceivePacket<?, ?> receivePacket;
         WritableByteChannel writableChannel;
         volatile long unReceiveLength;
 

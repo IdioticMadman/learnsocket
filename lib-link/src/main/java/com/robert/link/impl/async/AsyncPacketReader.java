@@ -213,8 +213,8 @@ public class AsyncPacketReader implements Closeable {
     }
 
     interface PacketProvider {
-        SendPacket takePacket();
+        SendPacket<?> takePacket();
 
-        void completePacket(SendPacket sendPacket, boolean isSucceed);
+        void completePacket(SendPacket<?> sendPacket, boolean isSucceed);
     }
 }

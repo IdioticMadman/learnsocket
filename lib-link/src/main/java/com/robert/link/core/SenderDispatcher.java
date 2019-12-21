@@ -12,14 +12,14 @@ public interface SenderDispatcher extends Closeable {
      *
      * @param packet
      */
-    void send(SendPacket packet);
+    void send(SendPacket<?> packet);
 
     /**
      * 取消发送一个数据包
      *
      * @param packet
      */
-    void cancel(SendPacket packet);
+    void cancel(SendPacket<?> packet);
 
     void sendHeartbeat();
 }

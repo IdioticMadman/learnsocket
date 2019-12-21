@@ -23,7 +23,7 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
     private AtomicBoolean isClosed = new AtomicBoolean(false);
 
     //默认任务数量设定为16个，超过将等待
-    private final BlockingQueue<SendPacket> queue = new ArrayBlockingQueue<>(16);
+    private final BlockingQueue<SendPacket<?>> queue = new ArrayBlockingQueue<>(16);
 
     private final AsyncPacketReader packetReader = new AsyncPacketReader(this);
 
@@ -33,7 +33,7 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
     }
 
     @Override
-    public void send(SendPacket packet) {
+    public void send(SendPacket<?> packet) {
         try {
             queue.put(packet);
             //判断是否在发送中，没有则触发发送
@@ -54,7 +54,7 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
     }
 
     @Override
-    public void cancel(SendPacket packet) {
+    public void cancel(SendPacket<?> packet) {
         boolean ret = queue.remove(packet);
         if (ret) {
             packet.cancel();
@@ -69,8 +69,8 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
      * @return packet
      */
     @Override
-    public SendPacket takePacket() {
-        SendPacket sendPacket = queue.poll();
+    public SendPacket<?> takePacket() {
+        SendPacket<?> sendPacket = queue.poll();
         if (sendPacket == null) {
             //队列为空，取消发送状态
             return null;
@@ -86,7 +86,7 @@ public class AsyncSenderDispatcher implements SenderDispatcher, IoArgs.IoArgsEve
      * 发送完毕某个packet，释放对应资源，以及重置相关标志
      */
     @Override
-    public void completePacket(SendPacket sendPacket, boolean isSucceed) {
+    public void completePacket(SendPacket<?> sendPacket, boolean isSucceed) {
         CloseUtils.close(sendPacket);
     }
 
